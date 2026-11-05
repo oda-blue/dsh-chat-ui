@@ -43,6 +43,8 @@ DSH の web UI はワークスペースと開発者向けパネルが主体で�
 
 **はじめての人は [docs/quickstart.ja.md](docs/quickstart.ja.md)（5 分）** からどうぞ。
 
+> いまはリポジトリを非公開にしています。GitHub から入れるには `oda-blue/dsh-chat-ui` を読む権限と、PATH の通った `git` が必要です（DSH は自分の Git の認証で取りに行きます）。
+
 **2 コマンド＋再起動**です。設定ファイルも鍵も要りません。
 
 ```bash
@@ -60,7 +62,7 @@ dsh web
   `node <DSH のインストール先>/node_modules/@deepseek-ai/dsh/lib/bin.js plugin --profile web add ...`
   （`npx dsh` ではありません。npm の `dsh` は無関係のシェルです）
 - オフライン / tarball（`npm pack` の出力や GitHub Releases）から:
-  `dsh plugin --profile web add ./dsh-chat-ui-0.1.0.tgz`
+  `dsh plugin --profile web add ./dsh-chat-ui-0.1.1.tgz`
 - 手元のチェックアウトから: `dsh plugin --profile web add /absolute/path/to/dsh-chat-ui`
 - **初回だけ** DSH の「プレビューについて」通知が出ます → **「続ける」** を 1 回押す
 
@@ -73,15 +75,16 @@ dsh web
 
 1. PC で入口を起動する（常駐します）
    `node <DSH_HOME>/profiles/web/node_modules/dsh-chat-ui/bin/web-entry.mjs --host lan`
-2. ブックマーク `http://<PC名>.local:8123/` を開く（初回は DSH の通知を「続ける」）
-3. スマホで同じ URL を開き、**入口の画面に出ている 8 桁のパスコード**を 1 回だけ入力する
+2. この PC では `http://127.0.0.1:8123/` をブックマークする（初回は DSH の通知を「続ける」）。
+   PC から `.local` や LAN の IP で開くと別の端末として扱われ、パスコードを聞かれます
+3. スマホで `http://<PC名>.local:8123/` を開き、**入口の画面に出ている 8 桁のパスコード**を 1 回だけ入力する
 4. スマホは**ホーム画面に追加**しておけば、アイコンから 1 タップで**アプリとして**開けます（下の「アプリとして使う」）
 
 - 入口は**リバースプロキシ**なので、**URL は 8123 のまま変わりません**。
   token は URL に出ず、DSH への認証は入口が内部で行います（`--mode proxy`、LAN の既定）
 - **PC 以外の端末は、パスコードで 1 回登録した端末だけ**が使えます（下の「安全のしくみ」）。
   この PC 自身（`127.0.0.1`）からはパスコード不要です
-- **DSH 本体は 127.0.0.1 の 8125** で動き、LAN からは届きません。
+- **DSH 本体は 127.0.0.1 の 8125**（`--port` + 1）で動き、LAN からは届きません。
   これまでの `:8124` は**入口への転送**として残しているので、古いブックマークや
   ホーム画面のショートカットもそのまま動きます
 - `--host lan` は LAN の IPv4 を自動検出。`<PC名>.local` でも開けるので、
@@ -116,7 +119,7 @@ dsh web
 
 - 日本語の表示は **設定 → 一般 → 言語** で「日本語」を選びます
 - 文言は ChatGPT 風（「何をお手伝いしましょうか？」「新しいチャット」「チャット」）
-- Windows で漢字が中国語の字形になる問題を避けるため、日本語フォントを既定の先頭に置きます。
+- Windows で漢字が中国語の字形になる問題を避けるため、既定のフォントの並びで日本語フォントを中国語フォントより前に置きます。
   設定でフォントを指定した場合はそちらが優先されます
 - `@local/dsh-ja` など**別の日本語パックが既に入っている場合は、そちらを優先**します（二重登録しません）
 
@@ -137,14 +140,11 @@ DSH 本体へ中継します（LAN ではリバースプロキシ）:
 # GitHub から入れた場合: プラグインが入っているプロファイルの bin を直接動かす
 node <DSH_HOME>/profiles/web/node_modules/dsh-chat-ui/bin/web-entry.mjs --host lan
 
-# npm に公開した場合
-npx dsh-chat-ui --host lan
-
 # この PC だけなら --host lan を外す（302 で token 付き URL へ転送する方式）
 node .../bin/web-entry.mjs
 ```
 
-`DSH_HOME` が環境変数に無い時は `--dsh-home <dir>` を足してください。
+`<DSH_HOME>` は環境変数 `DSH_HOME` の値で、無ければ `~/.dsh`（Windows では `C:\Users\<名前>\.dsh`）です。DSH のデータを別の場所に置いている時だけ `--dsh-home <dir>` を足してください。
 
 | ポート | 役割（`--host lan` の時） |
 |---|---|
@@ -181,13 +181,13 @@ manifest とアイコンは、ブラウザが cookie なしで取りに来るの
 入口は次の 2 つで守っています。
 
 1. **他のサイトからは使えない**: 入口は、自分のアドレス（`<LAN IP>:8123`・`<PC名>.local:8123`・
-   `127.0.0.1:8123`）宛ての要求だけを受け付け、別のサイトのページから来た要求（`Origin` /
-   `Sec-Fetch-Site` が他サイト）は断ります。ヘッダーは書き換えずに DSH へ渡すので、
+   `127.0.0.1:8123`・`localhost:8123`）宛ての要求だけを受け付け、別のサイトのページから来た要求（`Origin` /
+   `Sec-Fetch-Site` が他サイト、同じ PC の別ポートのページが裏で送る要求）は断ります。ヘッダーは書き換えずに DSH へ渡すので、
    DSH 本体の同じ検査もそのまま効きます。ブラウザで開いた悪意あるページが、裏で入口を
    操作することはできません。
 2. **登録した端末しか使えない**: この PC 以外の端末は、最初に**8 桁のパスコード**を 1 回入力します。
    登録した端末には署名付きの cookie（HttpOnly・SameSite=Strict、約 400 日）が入り、以後は
-   入力不要です。間違いは 10 分あたり 1 端末 5 回・全体 20 回までに制限しています。
+   入力不要です。間違いは 10 分あたり送信元のアドレスごとに 5 回・全体 20 回までに制限しています（超えると 10 分たつまで 429）。
 
 - パスコードは入口の起動時の表示と `$DSH_HOME/dsh-chat-ui/entry-pairing.json` にあります
   （パッケージには含まれません）。
@@ -219,6 +219,12 @@ dsh plugin --profile web remove dsh-chat-ui
 | `forbidden (unknown host)` | ブックマークのアドレスが入口のもの（LAN IP・`<PC名>.local`・`127.0.0.1` の 8123）か確認。IP が変わった時は入口を再起動 |
 | スマホから繋がらない | 同じ Wi-Fi か、IP が合っているか、入口ポートの受信が許可されているか |
 | 真っ白 | ブラウザのコンソール。`uiWorkspace` / `workspaces` サービスが必要（web プロファイル専用） |
+
+## 新しい版を出す
+
+1. `package.json` の `version` を上げて（例 `0.1.1`）commit する
+2. 同じ番号のタグを付けて push する: `git tag -a v0.1.1 -m "dsh-chat-ui 0.1.1" && git push origin main v0.1.1`
+3. `release` の自動処理が、タグと `package.json` の版が同じか確かめてから、`dsh-chat-ui-0.1.1.tgz` を GitHub のリリースに付ける
 
 ## ライセンス
 

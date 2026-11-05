@@ -26,6 +26,7 @@ sidebar: + New chat · Search · Chat list      main: headline + composer
 | Composer | The access-mode chip (write permission) is an **icon only**; the model selector reads "**Model**". Both keep the real name in the hover title and aria-label |
 | Phones (≤768px) | Left rail becomes a drawer with a hamburger button, backdrop, Esc/close-on-navigate; the chat takes the full width. Keyboard focus moves into the open drawer, stays there, and returns to the hamburger on close |
 | Working folder | `$DSH_HOME/chat` is created and registered on first start; every new chat is created there |
+| Japanese | A Japanese language pack and font order are bundled, with ChatGPT-style wording ("何をお手伝いしましょうか？", "新しいチャット", "チャット") |
 
 Everything is a client plugin plus a small host half, so removing the plugin restores the stock UI.
 
@@ -37,6 +38,8 @@ Everything is a client plugin plus a small host half, so removing the plugin res
 ## Install
 
 **New here? Start with [docs/quickstart.md](docs/quickstart.md) (5 minutes).**
+
+> The repository is private for now. Installing from GitHub needs read access to `oda-blue/dsh-chat-ui` and `git` on your PATH (DSH fetches it with your Git credentials).
 
 Two commands plus a restart:
 
@@ -54,7 +57,7 @@ That is the whole setup: no configuration file, no API key. Open the URL the app
   `npx @deepseek-ai/dsh plugin --profile web add ...` or `node <dsh-install>/node_modules/@deepseek-ai/dsh/lib/bin.js plugin --profile web add ...`.
   (Not `npx dsh`: the npm package named `dsh` is an unrelated shell.)
 - Offline or from a tarball (`npm pack` output / GitHub release):
-  `dsh plugin --profile web add ./dsh-chat-ui-0.1.0.tgz`
+  `dsh plugin --profile web add ./dsh-chat-ui-0.1.1.tgz`
 - Local checkout: `dsh plugin --profile web add /absolute/path/to/dsh-chat-ui`
 - The first launch shows DSH's own "preview" notice — click **Continue** once.
 
@@ -66,15 +69,16 @@ No model or API configuration is included: add your own provider key in **Settin
 
 1. Start the entrance on the PC (it stays running):
    `node <DSH_HOME>/profiles/web/node_modules/dsh-chat-ui/bin/web-entry.mjs --host lan`
-2. Bookmark `http://<computer-name>.local:8123/` (click **Continue** on DSH's first-run notice)
-3. On the phone, open the same URL and enter the **8-digit passcode shown by the entrance** (once per device)
+2. On this PC, bookmark `http://127.0.0.1:8123/` (click **Continue** on DSH's first-run notice).
+   Opening the `.local` or LAN address from the PC itself counts as another device and asks for the passcode
+3. On the phone, open `http://<computer-name>.local:8123/` and enter the **8-digit passcode shown by the entrance** (once per device)
 4. **Add it to the home screen** for one-tap access (it opens as an app; see *Use it as an app* below)
 
 - The entrance is a **reverse proxy**, so **the URL never changes** (always `:8123`). The token never
   appears in the address bar; the entrance authenticates to DSH internally (`--mode proxy`, the LAN default)
 - **Only devices paired with the passcode** can use it (see *How it stays safe* below).
   This PC itself (`127.0.0.1`) needs no passcode
-- **DSH itself runs on 127.0.0.1:8125** and is unreachable from the LAN. The old `:8124` stays
+- **DSH itself runs on 127.0.0.1:8125** (`--port` + 1) and is unreachable from the LAN. The old `:8124` stays
   as a **redirect to the entrance**, so existing bookmarks and home-screen shortcuts keep working
 - `--host lan` picks the LAN IPv4 automatically, and the entrance also answers on
   `<computer-name>.local`, so the bookmark survives a DHCP address change (on networks with mDNS)
@@ -104,7 +108,7 @@ A Japanese language pack and font settings are bundled (`locale/ja.json`, inline
 
 - Choose **日本語** under **Settings → General → Language**
 - The copy follows the ChatGPT style ("何をお手伝いしましょうか？", "新しいチャット", "チャット")
-- Japanese fonts are placed first so Windows does not render kanji with Chinese glyphs; a font chosen in Settings still wins
+- Japanese fonts come before the Chinese ones in the default font list, so Windows does not render kanji with Chinese glyphs; a font chosen in Settings still wins
 - If another Japanese pack (such as `@local/dsh-ja`) is already installed, it takes precedence and the bundled one stays inactive
 
 To change a translation, edit `locale/ja.json`, then:
@@ -122,14 +126,11 @@ node tools/embed-ja.mjs --check  # detect a stale embed
 # installed from GitHub: run the bin from the profile that has the plugin
 node <DSH_HOME>/profiles/web/node_modules/dsh-chat-ui/bin/web-entry.mjs --host lan
 
-# if you published the package to npm
-npx dsh-chat-ui --host lan
-
 # this PC only (skip --host lan; a 302 to the token URL)
 node .../bin/web-entry.mjs
 ```
 
-Add `--dsh-home <dir>` when `DSH_HOME` is not set in the environment.
+`<DSH_HOME>` is the `DSH_HOME` environment variable, or `~/.dsh` when it is not set (on Windows `C:\Users\<you>\.dsh`). Add `--dsh-home <dir>` only when DSH keeps its data somewhere else.
 
 | Port | Role (with `--host lan`) |
 |---|---|
@@ -164,8 +165,8 @@ Only list the entrance's own addresses. When the PC's IP changes, update the lis
 
 Through the entrance, DSH runs with **the owner's rights** (including file access and running commands), so the entrance enforces two things:
 
-1. **Other websites cannot use it.** Only requests addressed to the entrance itself (`<LAN-IP>:8123`, `<computer-name>.local:8123`, `127.0.0.1:8123`) are served, and requests coming from another site's page (a foreign `Origin` / `Sec-Fetch-Site: cross-site`) are refused. Headers reach DSH unchanged, so DSH's own Host/Origin checks still apply. A malicious page open in a browser cannot drive DSH through the entrance.
-2. **Only paired devices can use it.** Every device other than this PC enters an **8-digit passcode** once. Paired browsers get a signed cookie (HttpOnly, SameSite=Strict, about 400 days). Wrong guesses are limited to 5 per device and 20 overall per 10 minutes.
+1. **Other websites cannot use it.** Only requests addressed to the entrance itself (`<LAN-IP>:8123`, `<computer-name>.local:8123`, `127.0.0.1:8123`, `localhost:8123`) are served, and requests coming from another site's page (a foreign `Origin`, `Sec-Fetch-Site: cross-site`, or a background `same-site` request from another port) are refused. Headers reach DSH unchanged, so DSH's own Host/Origin checks still apply. A malicious page open in a browser cannot drive DSH through the entrance.
+2. **Only paired devices can use it.** Every device other than this PC enters an **8-digit passcode** once. Paired browsers get a signed cookie (HttpOnly, SameSite=Strict, about 400 days). Wrong guesses are limited to 5 per sending address and 20 overall per 10 minutes (then 429 until the window passes).
 
 - The passcode is printed when the entrance starts and stored in `$DSH_HOME/dsh-chat-ui/entry-pairing.json` (never in this package).
 - Start once with `--reset-pairing` to issue a new passcode and unpair every device.
@@ -194,6 +195,12 @@ dsh plugin --profile web remove dsh-chat-ui
 | `forbidden (unknown host)` | Use the entrance's own address (LAN IP, `<computer-name>.local` or `127.0.0.1`, port 8123). Restart the entrance after the IP changes |
 | Phone cannot connect | Same Wi-Fi, correct LAN IP, and an inbound firewall rule for the entrance port |
 | Blank page | Look at the browser console; the plugin needs `uiWorkspace` and `workspaces` services (web profile only) |
+
+## Releasing a new version
+
+1. Raise `version` in `package.json` (for example `0.1.1`) and commit
+2. Tag it with the same number and push: `git tag -a v0.1.1 -m "dsh-chat-ui 0.1.1" && git push origin main v0.1.1`
+3. The `release` workflow checks that the tag matches `package.json`, then attaches `dsh-chat-ui-0.1.1.tgz` to the GitHub release
 
 ## License
 

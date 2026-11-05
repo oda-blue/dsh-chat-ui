@@ -16,9 +16,9 @@
  *     A 302 to the current token URL. DSH itself listens on `--port`.
  *
  * Usage:
- *   npx dsh-chat-ui                 # this PC only (redirect)
- *   npx dsh-chat-ui --host lan      # this machine's LAN IPv4, for phones (proxy + passcode)
- *   npx dsh-chat-ui --host 192.168.1.23
+ *   node bin/web-entry.mjs                  # this PC only (redirect)
+ *   node bin/web-entry.mjs --host lan       # this machine's LAN IPv4, for phones (proxy + passcode)
+ *   node bin/web-entry.mjs --host 192.168.1.23
  *
  * Options:
  *   --host <ip|lan>     entrance address (default 127.0.0.1)
@@ -184,7 +184,11 @@ function entranceAuthority(headers) {
  * same rule again upstream because the headers are forwarded unchanged.
  */
 function isSameOriginRequest(headers, authority) {
-  if (headers['sec-fetch-site'] === 'cross-site') return false
+  const site = headers['sec-fetch-site']
+  if (site === 'cross-site') return false
+  // same-site は「同じ PC・同じ IP の別ポートのページ」も含む。通すのはページの移動だけ
+  // （旧ポート 8124 からの転送など）で、裏で送られる要求は断る。
+  if (site === 'same-site' && headers['sec-fetch-mode'] !== 'navigate') return false
   const origin = headers.origin
   if (origin === undefined) return true
   try {
@@ -304,14 +308,14 @@ function pairPage(headers, message) {
     ? {
         lang: 'ja',
         title: 'この端末を登録',
-        lead: 'PC の入口を起動した画面に出ている 8 桁のパスコードを入力してください。登録は端末ごとに 1 回だけです。',
+        lead: 'PC で起動した黒い画面（ターミナル）の「passcode:」の行に出ている 8 桁の数字を入力してください。登録は端末ごとに 1 回だけです。',
         label: 'パスコード',
         submit: '登録する',
       }
     : {
         lang: 'en',
         title: 'Pair this device',
-        lead: 'Enter the 8-digit passcode shown where the entrance was started on the PC. Each device pairs once.',
+        lead: 'Enter the 8-digit number on the "passcode:" line in the terminal window on the PC where this was started. Each device pairs once.',
         label: 'Passcode',
         submit: 'Pair',
       }
@@ -327,9 +331,9 @@ function pairPage(headers, message) {
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>${t.title}</title>
 <style>
-  :root { --bg: #212121; --card: #2f2f2f; --text: #ececec; --muted: #b4b4b4; --border: #ffffff26; --accent: #ececec; --accent-text: #0d0d0d; --error: #ff8f8f; }
+  :root { --bg: #212121; --card: #2f2f2f; --text: #ececec; --muted: #b4b4b4; --border: #ffffff26; --input-border: #8e8e8e; --accent: #ececec; --accent-text: #0d0d0d; --error: #ff8f8f; }
   @media (prefers-color-scheme: light) {
-    :root { --bg: #ffffff; --card: #f4f4f4; --text: #0d0d0d; --muted: #5d5d5d; --border: #0000001a; --accent: #0d0d0d; --accent-text: #ffffff; --error: #b3261e; }
+    :root { --bg: #ffffff; --card: #f4f4f4; --text: #0d0d0d; --muted: #5d5d5d; --border: #0000001a; --input-border: #767676; --accent: #0d0d0d; --accent-text: #ffffff; --error: #b3261e; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--text);
@@ -338,7 +342,7 @@ function pairPage(headers, message) {
   h1 { font-size: 20px; margin: 0 0 8px; }
   p { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0 0 16px; }
   label { display: block; font-size: 14px; margin-bottom: 6px; }
-  input { width: 100%; font-size: 22px; letter-spacing: 0.2em; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+  input { width: 100%; font-size: 22px; letter-spacing: 0.2em; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--input-border);
     background: var(--bg); color: var(--text); }
   button { width: 100%; margin-top: 16px; min-height: 44px; font-size: 16px; font-weight: 600; border: 0; border-radius: 22px;
     background: var(--accent); color: var(--accent-text); cursor: pointer; }
@@ -503,6 +507,11 @@ function handlePair(request, response) {
   })
   request.on('end', () => {
     if (tooLarge) return sendText(response, 413, 'payload too large')
+    // 到着時の判定だけだと、同時に送られた多数の要求がまとめて照合されてしまうので、
+    // 照合の直前にもう一度確かめる（Node は 1 本ずつ処理するので、ここで上限が効く）。
+    if (isLockedOut(address)) {
+      return sendPairPage(request, response, 429, ja ? '間違いが続いたため、10 分ほど待ってから試してください。' : 'Too many attempts. Wait about 10 minutes and try again.')
+    }
     const code = (new URLSearchParams(body).get('code') ?? '').replace(/\s+/g, '')
     if (code !== '' && safeEqual(code, pairing.passcode)) {
       failures.delete(address)
@@ -528,7 +537,12 @@ function gate(request) {
   return { ok: true, authority }
 }
 
-const isPaired = (request) => isLoopbackAddress(request.socket.remoteAddress) || hasValidPairCookie(request.headers)
+// ループバックからの直接の接続だけを「この PC」とみなす。同じ PC のリバースプロキシや
+// トンネルが転送した要求（転送元を示すヘッダーがある）は、登録の cookie を求める。
+const FORWARDED_HEADERS = ['forwarded', 'x-forwarded-for', 'x-real-ip', 'cf-connecting-ip', 'true-client-ip']
+const isDirectLoopback = (request) =>
+  isLoopbackAddress(request.socket.remoteAddress) && !FORWARDED_HEADERS.some((name) => request.headers[name] !== undefined)
+const isPaired = (request) => isDirectLoopback(request) || hasValidPairCookie(request.headers)
 
 // ---------------------------------------------------------------------------
 // Upstream authentication (proxy mode)
@@ -720,14 +734,16 @@ function handleProxyRequest(request, response) {
     )
     upstream.on('error', (error) => {
       if (!response.headersSent) response.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' })
-      response.end(`dsh-chat-ui: upstream error: ${error.message}`)
+      log('upstream error:', error.message)
+      response.end('dsh-chat-ui: DSH did not answer. Reload in a few seconds.')
     })
     if (replayable) upstream.end()
     else request.pipe(upstream)
   }
   forward(true).catch((error) => {
     if (!response.headersSent) response.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' })
-    response.end(`dsh-chat-ui: upstream error: ${error?.message ?? error}`)
+    log('upstream error:', error?.message ?? error)
+    response.end('dsh-chat-ui: DSH did not answer. Reload in a few seconds.')
   })
 }
 

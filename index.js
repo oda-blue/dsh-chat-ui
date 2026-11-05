@@ -54,7 +54,8 @@ async function renameUnique(controller, registry, workspaceId, wanted) {
 
 export function apply(ctx, config) {
   const configured = typeof config?.chatWorkspacePath === 'string' ? config.chatWorkspacePath.trim() : ''
-  const path = configured || join(resolveDshHome(), 'chat')
+  // 相対パスは DSH の作業ディレクトリ基準になってしまうので、ここで絶対パスにする
+  const path = configured ? resolve(configured) : join(resolveDshHome(), 'chat')
 
   ctx.effect(() => {
     let disposed = false
@@ -66,10 +67,15 @@ export function apply(ctx, config) {
       if (disposed) return
       // After chatWorkspacePath changes, the previous folder still carries the
       // mark. Hand it back its folder name so the client sees one chat folder.
+      // 1 件失敗しても、今のフォルダへの印付けは続ける。
       for (const other of ctx.workspaceRegistry.list()) {
         if (other.id === workspace.workspaceId || other.title !== CHAT_TITLE) continue
-        const title = await renameUnique(ctx.workspaceController, ctx.workspaceRegistry, other.id, basename(other.path) || 'workspace')
-        ctx.logger?.info?.(`dsh-chat-ui: previous chat folder ${other.path} renamed to "${title}"`)
+        try {
+          const title = await renameUnique(ctx.workspaceController, ctx.workspaceRegistry, other.id, basename(other.path) || 'workspace')
+          ctx.logger?.info?.(`dsh-chat-ui: previous chat folder ${other.path} renamed to "${title}"`)
+        } catch (error) {
+          ctx.logger?.warn?.(`dsh-chat-ui: could not rename the previous chat folder ${other.path}: ${error?.message ?? error}`)
+        }
       }
       if (workspace.title !== CHAT_TITLE) {
         await ctx.workspaceController.rename({ workspaceId: workspace.workspaceId, title: CHAT_TITLE })

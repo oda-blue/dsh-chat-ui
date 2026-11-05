@@ -30,9 +30,11 @@ dsh --version
 dsh plugin --profile web add github:oda-blue/dsh-chat-ui
 ```
 
+- いまはリポジトリが非公開です。読む権限と、PATH の通った `git` が必要です
+
 - `dsh` が見つからない時は `npx @deepseek-ai/dsh plugin --profile web add github:oda-blue/dsh-chat-ui`
-- ネットワークで失敗する時は、リリースの `dsh-chat-ui-0.1.0.tgz` を落として
-  `dsh plugin --profile web add ./dsh-chat-ui-0.1.0.tgz`
+- ネットワークで失敗する時は、リリースの `dsh-chat-ui-0.1.1.tgz` を落として
+  `dsh plugin --profile web add ./dsh-chat-ui-0.1.1.tgz`
 
 ## 3. 起動して開く
 

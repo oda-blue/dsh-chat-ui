@@ -1,6 +1,6 @@
 {
   "name": "dsh-chat-ui",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ChatGPT-style chat UI for the DeepSeek Harness (DSH) web client: palette, chat-only layout, phone drawer, and a fixed chat workspace",
   "license": "MIT",
   "repository": {

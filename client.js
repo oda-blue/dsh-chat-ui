@@ -130,10 +130,10 @@ html:root[lang] {
   --dsw-alias-label-primary: #0d0d0d;
   --dsw-alias-label-primary-dimmed: #1a1a1a;
   --dsw-alias-label-secondary: #3c3c3c;
-  /* 補足の文字。#767676 は白地では 4.5:1 だが、サイドバー（#f9f9f9）や選択行（#ececec）で
-     足りなかったので、選択行でも 4.5:1 になる #6b6b6b にする */
-  --dsw-alias-label-tertiary: #6b6b6b;
-  --dsw-alias-label-caption: #6b6b6b;
+  /* 補足の文字。#767676 は白地では 4.5:1 だが、サイドバー（#f9f9f9）や、その上の選択行
+     （#0000000f を重ねて約 #eaeaea）で足りなかったので、選択行でも 4.5:1 を超える #666666 にする */
+  --dsw-alias-label-tertiary: #666666;
+  --dsw-alias-label-caption: #666666;
   --dsw-alias-border-l1: #0000000f;
   --dsw-alias-border-l2: #0000001a;
   --dsw-alias-border-l3: #00000026;
@@ -266,11 +266,12 @@ header [class*="headerActions"] {
 }
 
 /* 会話ヘッダーを ChatGPT と同じ 1 行（タイトル + ⋯）にする。
-   - 表示の切り替えタブ（チャット / 実行の記録 / その他の会話の表示）は出さない。
-     途中の手順は会話の中（「リクエストを分析中」やツールの行）に出るので、チャットのタブだけで足りる。
-     別のタブが開いたままだと戻れないので、JS 側でチャットのタブへ戻す（showChatTab）。
+   - 表示の切り替えタブ（チャット / 実行の記録 / その他の会話の表示）は、チャットのタブが
+     選ばれている間だけ出さない。途中の手順は会話の中（「リクエストを分析中」やツールの行）に出る。
+     ツールの詳細などで別のタブが開いた時はタブを出すので、そこからチャットへ戻れる。
    - 「エクスプローラーで開く」（作業フォルダを開く）も出さない。⋯ の「その他の操作」は残す。 */
-header:has([data-slot="conversation.session.header"]):not([class*="headerBlank"]) [class*="_tabs"] {
+header:has([data-slot="conversation.session.header"]):not([class*="headerBlank"])
+  [class*="_tabs"]:has([role="tablist"] > [role="tab"]:first-child[aria-selected="true"]) {
   display: none !important;
 }
 header:has([data-slot="conversation.session.header"]):not([class*="headerBlank"]) [class*="menuAnchor"]:has([data-open-target]) {
@@ -382,7 +383,13 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
 
   /* 中央の本文を全幅に。ヘッダーの左はハンバーガー分あける */
   [data-dshgpt-frame] header {
-    padding-left: 46px;
+    padding-left: 50px;
+  }
+
+  /* 指で押しやすいよう、履歴と上部の行を 44px にする */
+  [data-dshgpt-sidebar] [class*="sessionRow"],
+  [data-dshgpt-sidebar] button[class*="newSession"] {
+    min-height: 44px;
   }
 
   /* iPhone のホームバーぶんの余白 */
@@ -413,8 +420,8 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
   top: 8px;
   left: 8px;
   z-index: 70;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   align-items: center;
   justify-content: center;
   border: 0;
@@ -423,6 +430,10 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+[data-dshgpt-hamburger]:focus-visible {
+  outline: 2px solid var(--dsw-alias-label-secondary);
+  outline-offset: -2px;
 }
 [data-dshgpt-hamburger]:active {
   background: var(--dsw-alias-interactive-bg-hover);
@@ -452,10 +463,15 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
       const state = { button: null, root: null, frame: null, sidebar: null, observer: null, timers: [] }
 
       const later = (fn, ms) => {
-        const id = setTimeout(fn, ms)
+        const id = setTimeout(() => {
+          state.timers = state.timers.filter((t) => t !== id)
+          fn()
+        }, ms)
         state.timers.push(id)
         return id
       }
+
+      const menuLabelText = () => (/^ja/i.test(document.documentElement.lang || '') ? 'メニュー' : 'Menu')
 
       const findButton = () => {
         // 1) クラス名から（言語に依存しない）。ロゴ行の「開閉トグル」だけを選ぶ。
@@ -475,7 +491,8 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
       }
 
       const isOpen = () => {
-        if (!state.root) return false
+        // サイドバーが作り直されて古い root が外れたら、閉じている扱い（暗幕を残さない）
+        if (!state.root || !state.root.isConnected) return false
         const cls = typeof state.root.className === 'string' ? state.root.className : ''
         // 折りたたみ中は root に collapsed が付く（幅の inline style は開いている時だけ）
         // クラス名は "hHd-Xa_collapsed" のように "_" を含むので [\w-] で見る
@@ -502,10 +519,7 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
       const onDrawerChange = (open, first) => {
         const hamburger = document.querySelector('[data-dshgpt-hamburger]')
         if (hamburger) hamburger.setAttribute('aria-expanded', String(open))
-        for (const el of document.querySelectorAll('[data-dshgpt-center], [data-dshgpt-right]')) {
-          if (open) el.setAttribute('inert', '')
-          else el.removeAttribute('inert')
-        }
+        applyBackgroundInert(open)
         if (first) return
         const active = document.activeElement
         if (open) {
@@ -516,6 +530,26 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
           }, 60)
         } else if (hamburger && isPhone() && (!active || active === document.body || state.sidebar?.contains(active))) {
           hamburger.focus({ preventScroll: true })
+        }
+      }
+
+      // 開いたドロワーの裏（中央・右）を inert にし、ドロワーを読み上げ上のダイアログにする。
+      // DSH が中央を作り直しても付け直せるよう、resolve からも呼ぶ。
+      const applyBackgroundInert = (open) => {
+        for (const el of document.querySelectorAll('[data-dshgpt-center], [data-dshgpt-right]')) {
+          if (open) el.setAttribute('inert', '')
+          else el.removeAttribute('inert')
+        }
+        const sidebar = state.sidebar
+        if (!sidebar) return
+        if (open) {
+          sidebar.setAttribute('role', 'dialog')
+          sidebar.setAttribute('aria-modal', 'true')
+          sidebar.setAttribute('aria-label', menuLabelText())
+        } else if (sidebar.getAttribute('role') === 'dialog') {
+          sidebar.removeAttribute('role')
+          sidebar.removeAttribute('aria-modal')
+          sidebar.removeAttribute('aria-label')
         }
       }
 
@@ -600,14 +634,10 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
           if (label && chip.title !== label) chip.title = label
           chip.setAttribute('data-dshgpt-model-chip', '')
         }
-        showChatTab()
-      }
-
-      // 会話の表示タブは CSS で隠している。「実行の記録」などが選ばれたまま開くと
-      // 戻る手段が無いので、先頭（チャット）のタブへ戻す。
-      const showChatTab = () => {
-        const tabs = document.querySelectorAll('[data-slot="conversation.session.header"] [role="tablist"] [role="tab"]')
-        if (tabs.length > 0 && tabs[0].getAttribute('aria-selected') !== 'true') tabs[0].click()
+        // 表示言語を後から変えても、ハンバーガーの読み上げ名を合わせる
+        const hamburger = document.querySelector('[data-dshgpt-hamburger]')
+        const menuLabel = menuLabelText()
+        if (hamburger && hamburger.getAttribute('aria-label') !== menuLabel) hamburger.setAttribute('aria-label', menuLabel)
       }
 
       // 右パネルが開いた状態で始まった時だけ、一度だけ閉じる。
@@ -656,6 +686,7 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
         const sideIndex = kids.indexOf(sidebar)
         if (sideIndex >= 0 && kids[sideIndex + 1]) kids[sideIndex + 1].setAttribute('data-dshgpt-center', '')
         if (sideIndex >= 0 && kids[sideIndex + 2]) kids[sideIndex + 2].setAttribute('data-dshgpt-right', '')
+        if (state.open) applyBackgroundInert(true)
 
         if (!sidebar.dataset.dshgptWired) {
           sidebar.dataset.dshgptWired = '1'
@@ -667,7 +698,7 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
 
       const ensureUi = () => {
         // 表示言語に合わせたラベル（読み上げ用）
-        const label = /^ja/i.test(document.documentElement.lang || '') ? 'メニュー' : 'Menu'
+        const label = menuLabelText()
         if (!document.querySelector('[data-dshgpt-hamburger]')) {
           const button = document.createElement('button')
           button.type = 'button'
@@ -727,6 +758,11 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
           delete state.sidebar.dataset.dshgptWired
           state.sidebar.removeAttribute('data-dshgpt-sidebar')
           state.sidebar.removeAttribute('inert')
+          if (state.sidebar.getAttribute('role') === 'dialog') {
+            state.sidebar.removeAttribute('role')
+            state.sidebar.removeAttribute('aria-modal')
+            state.sidebar.removeAttribute('aria-label')
+          }
         }
         if (state.frame) {
           state.frame.removeAttribute('data-dshgpt-frame')
@@ -750,7 +786,7 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
      * フォルダの用意と DSH への登録はホスト側（index.js）がやる。ホスト側はその
      * ワークスペースの名前を CHAT_TITLE にして印を付ける（名前は DSH 内で重複しない）。
      * ここは印の付いたワークスペースを探して、新規チャットをそこへ寄せる。
-     * 印が無い時（ホスト側が古い版のまま動いている間）だけ、フォルダ名が chat のものを使う。
+     * 印が無い時（ホスト側の準備が失敗した時など）は固定せず、DSH の既定に任せる。
      * 固定は `ctx.uiWorkspace.startSession` を包んで、ワークスペース未指定の時だけ
      * 既定を差し込む（サイドバーの「新しいチャット」もショートカットも同じ経路）。
      *
@@ -771,11 +807,8 @@ html:not([lang^="ja"]) [class*="standardControls"] button::before {
           if (!snapshot || snapshot.phase !== 'ready') return null
           const marked = snapshot.items.find((workspace) => workspace.title === CHAT_TITLE)
           if (marked) return marked.workspaceId ?? null
-          // 印が無い時の代わり: フォルダ名が chat のもの。複数あれば最後に更新されたもの。
-          const matches = snapshot.items.filter((workspace) => /[\\/]chat$/i.test(workspace.path ?? ''))
-          if (matches.length === 0) return null
-          matches.sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
-          return matches[0].workspaceId ?? null
+          // 印が無い時は固定しない（DSH の既定どおり）。名前が chat なだけの別フォルダは選ばない。
+          return null
         } catch {
           return null
         }
