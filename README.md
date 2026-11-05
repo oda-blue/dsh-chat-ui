@@ -39,7 +39,7 @@ Everything is a client plugin plus a small host half, so removing the plugin res
 
 **New here? Start with [docs/quickstart.md](docs/quickstart.md) (5 minutes).**
 
-> The repository is private for now. Installing from GitHub needs read access to `oda-blue/dsh-chat-ui` and `git` on your PATH (DSH fetches it with your Git credentials).
+> Installing from GitHub needs `git` on your PATH.
 
 Two commands plus a restart:
 

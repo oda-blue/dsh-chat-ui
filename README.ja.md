@@ -43,7 +43,7 @@ DSH の web UI はワークスペースと開発者向けパネルが主体で�
 
 **はじめての人は [docs/quickstart.ja.md](docs/quickstart.ja.md)（5 分）** からどうぞ。
 
-> いまはリポジトリを非公開にしています。GitHub から入れるには `oda-blue/dsh-chat-ui` を読む権限と、PATH の通った `git` が必要です（DSH は自分の Git の認証で取りに行きます）。
+> GitHub から入れるには、PATH の通った `git` が必要です。
 
 **2 コマンド＋再起動**です。設定ファイルも鍵も要りません。
 

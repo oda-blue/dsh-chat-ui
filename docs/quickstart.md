@@ -30,7 +30,7 @@ A version number means you are ready (this plugin is tested with `0.2.1-rc.5`).
 dsh plugin --profile web add github:oda-blue/dsh-chat-ui
 ```
 
-- The repository is private for now: you need read access to it and `git` on your PATH
+- You need `git` on your PATH
 
 - No `dsh` on PATH? `npx @deepseek-ai/dsh plugin --profile web add github:oda-blue/dsh-chat-ui`
 - No network? Download `dsh-chat-ui-0.1.1.tgz` from the releases and run
