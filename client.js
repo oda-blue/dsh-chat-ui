@@ -1,0 +1,847 @@
+// ChatGPT 風の見た目とスマホ用レイアウト（クライアント側だけで完結する）
+//
+// 方針:
+// - 色・角丸・余白は @deepseek-ai/dsh-client-ui-theme の --dsw-* トークンを上書きする。
+//   DSH 本体の CSS を書き換えないので、プラグインを外せば元に戻る。
+// - クラス名は CSS Modules のハッシュ付き（pI_x6G_frame など）なので、
+//   ローカル名の部分一致 [class*="frame"] で当てる。ハッシュはビルドごとに変わるが
+//   ローカル名は上流のソース名なので、本体更新でも壊れにくい。
+// - 狭い幅の作りは DSH 側の DOM 構造（左サイドバー・中央・右）に依存するため、
+//   起動時に要素へ data-dshgpt-* を付けて CSS の当て先を固定する。
+window.__ModuleLoader__.load({
+  id: 'dsh-chat-ui',
+  factory() {
+    const BREAKPOINT = 768
+
+    // 日本語の辞書。tools/embed-ja.mjs が locale/ja.json から埋め込む（手で編集しない）。
+    // <ja-dictionaries>
+    const JA_DICTIONARIES = {"agent-team":{"trigger":"エージェントチーム","loading":"チームを読み込んでいます…","unavailable":"チームは利用できません","failure":"保存されたチームの記録が無効です: {message}","empty":"共有タスクはまだありません。会話から作成してください。","roster":"メンバー","tasks":"共有タスク","model":"モデル","open":"メンバーの会話を開く","current":"現在のチャット","owner":"担当者","unowned":"担当者なし","blockedBy":"ブロック元","writeScopes":"書き込み範囲","ready":"準備完了","blocked":"依存関係によりブロック中","task.expand":"さらに表示","task.collapse":"折りたたむ","memberStatus.running":"実行中","memberStatus.inactive":"停止中","memberStatus.provisioning":"準備中","memberStatus.failed":"失敗","status.pending":"保留中","status.in_progress":"進行中","status.completed":"完了"},"approval":{"waiting":"承認を待っています","detail.aria":"承認の詳細","escalation":"ツール {toolName} が特権実行を要求しています","reject":"却下","allowOnce":"今回のみ許可"},"chat":{"message.stepProcess.thinking":"リクエストを分析中","message.stepProcess.read":"ファイルを読み取り中","message.stepProcess.readImage":"画像を読み取り中","message.stepProcess.write":"ファイルに書き込み中","message.stepProcess.search":"コードを検索中","message.stepProcess.edit":"ファイルを編集中","message.stepProcess.commands":"コマンドを実行中","message.stepProcess.code":"コードを実行中","message.stepProcess.webSearch":"Web を検索中","message.stepProcess.webFetch":"Web ページを確認中","message.stepProcess.subagents":"サブエージェントを調整中","message.stepProcess.plan":"プランを更新中","message.stepProcess.questions":"あなたの操作を待っています","message.stepProcess.tools":"ツールを呼び出し中","message.stepProcess.prepare.read":"ファイルを読む準備中","message.stepProcess.prepare.readImage":"画像を読む準備中","message.stepProcess.prepare.write":"ファイルに書き込む準備中","message.stepProcess.prepare.search":"コードを検索する準備中","message.stepProcess.prepare.edit":"ファイルを編集する準備中","message.stepProcess.prepare.commands":"コマンドを実行する準備中","message.stepProcess.prepare.code":"コードを実行する準備中","message.stepProcess.prepare.webSearch":"Web を検索する準備中","message.stepProcess.prepare.webFetch":"Web ページを開く準備中","message.stepProcess.prepare.subagents":"サブエージェントを調整する準備中","message.stepProcess.prepare.plan":"プランを更新する準備中","message.stepProcess.prepare.questions":"質問を準備中","message.stepProcess.prepare.tools":"ツール呼び出しを準備中","message.stepProcess.done.thinking":"分析が完了しました","message.stepProcess.done.read":"ファイルを読み取りました","message.stepProcess.done.readImage":"画像を読み取りました","message.stepProcess.done.write":"ファイルに書き込みました","message.stepProcess.done.search":"コードを検索しました","message.stepProcess.done.edit":"ファイルを編集しました","message.stepProcess.done.commands":"コマンドを実行しました","message.stepProcess.done.code":"コードを実行しました","message.stepProcess.done.webSearch":"Web を検索しました","message.stepProcess.done.webFetch":"Web ページを確認しました","message.stepProcess.done.subagents":"サブエージェントを調整しました","message.stepProcess.done.plan":"プランを更新しました","message.stepProcess.done.questions":"質問しました","message.stepProcess.done.tools":"ツールを呼び出しました","message.stepProcess.joinTwo":"{first}と{second}","message.stepProcess.comma":"、","message.stepProcess.sharedPrefix":"","message.stepProcess.more":"{title}など","message.trigger.request":"実行が要求されました","message.trigger.goal":"ゴールを継続中","message.trigger.agent":"タスクのメッセージを受信しました","message.trigger.team":"チームのメッセージを受信しました","message.trigger.subagent":"サブタスクの状態が更新されました","message.trigger.github":"GitHub のイベントを受信しました","message.trigger.webhook":"外部イベントを受信しました","message.trigger.schedule":"自動化タスク","message.trigger.job":"バックグラウンドタスクが更新されました","message.trigger.plugin":"プラグインの状態が更新されました","message.trigger.explanation":"この応答は上の通知によって始まりました。","message.turnProcess.worked":"完了","message.turnProcess.took":"所要時間 ","message.turnProcess.failed":"失敗","view.chat":"チャット","image.open":"画像を拡大表示","image.loading":"画像を読み込み中…","image.failed":"画像のプレビューを表示できません","image.dialog":"画像プレビュー","image.close":"画像プレビューを閉じる","number.groupSeparator":",","duration.compactSeconds":"{seconds}秒","duration.compactMinutes":"{minutes}分{seconds}秒","duration.milliseconds":"{milliseconds}ミリ秒","stats.counts":"{turns} ターン {steps} ステップ","stats.cacheHit":"キャッシュヒット {percent}%","stats.dialog.title":"セッションの統計","stats.dialog.usageTitle":"トークン使用量","stats.dialog.llmTime":"LLM の処理時間","stats.dialog.toolTime":"ツールの処理時間","stats.dialog.ttft":"初回トークンまでの平均時間（TTFT）","stats.dialog.speed":"1秒あたりのトークン数（TPS）","chat.loadingHistory":"履歴を読み込み中…","chat.loadError":"履歴の読み込みに失敗しました: {message}（{code}）","chat.loadOlder":"以前を読み込む","chat.toBottom":"最新に戻る","chat.deepDiving":"深く調査中","chat.deepDivingFor":"{duration} のあいだ深く調査中 ···","chat.turnNavigation.label":"ターンの移動","chat.turnNavigation.jump":"ターン {turn} に移動","chat.turnNavigation.jumpLoad":"ターン {turn} を読み込んで移動","chat.turnNavigation.turn":"ターン {turn}","settings.performance.title":"パフォーマンスと使用量","settings.performance.description":"表示するパフォーマンスと使用量の情報の量を選択します","settings.performance.compact":"コンパクト","settings.performance.detailed":"詳細","settings.links.title":"チャットのリンクを開く場所","settings.links.description":"Web リンクを開く場所を選択します","settings.links.sidebar":"アプリ内サイドバー","settings.links.newTab":"既定のブラウザ","settings.transcript.title":"作業の詳細","settings.transcript.description":"ツール呼び出しの詳細をどの程度表示するかを選択します","settings.collapse.title":"作業の詳細を折りたたむタイミング","settings.collapse.description":"作業の詳細を自動で折りたたむタイミングを選択します","settings.collapse.completion":"完了時","settings.collapse.nextInput":"次のメッセージの送信時","settings.transcript.compact":"コンパクト","settings.transcript.standard":"標準","settings.transcript.detailed":"詳細","settings.transcript.verbose":"全件表示","fileOpen.title":"ファイルを開けませんでした","fileOpen.unknown":"このファイルを開けませんでした","message.extraBlock":"追加のコンテンツブロック","message.systemPrompt":"システムプロンプト","message.systemPromptUpdate":"システムプロンプトの更新","message.toolAdded":"ツールを追加: {name}","message.toolRemoved":"ツールを削除: {name}","message.toolsAdded":"追加: {names}","message.toolsAddedCount":"{count} 件追加","message.toolsChanged":"{added} 件追加、{removed} 件削除","message.toolsRemoved":"削除: {names}","message.toolsRemovedCount":"{count} 件削除","message.toolsUpdated":"ツールを更新しました","message.contextInjection":"コンテキストの注入","message.contextRecall":"セッションの想起","message.referenceSummary":"参照したセッション · {labels}","message.referenceSeparator":"、","message.context.instructions.loaded":"読み込み済み","message.context.instructions.added":"追加","message.context.instructions.updated":"更新","message.context.instructions.removed":"削除","message.context.catalog.replaced":"置き換えカタログ","message.context.catalog.more":"… 他 {count} 件","message.context.snapshot.supersedes":"以前のスナップショットを置き換え","message.context.relay.from":"セッション {session} から","message.context.recall.counts":"{retained} 件保持 · {omitted} 件省略","message.context.recall.truncated":"切り詰め済み","message.compaction":"コンテキストを圧縮しました","message.compaction.running":"コンテキストを圧縮中…","message.compaction.completed":"履歴 {items} 件を圧縮しました（約 {tokens} トークン）","message.compaction.expand":"圧縮の要約を表示","message.compaction.unavailable":"圧縮の要約を利用できません","message.compaction.commandTitle":"compact","message.think":"思考","message.unknownSurface":"不明なイベント: {type}","message.unknownBlock":"不明なコンテンツブロック","message.turnProcess.toolCalls.one":"{count} 件のツール呼び出し","message.turnProcess.toolCalls.other":"{count} 件のツール呼び出し","message.turnProcess.messages.one":"{count} 件のメッセージ","message.turnProcess.messages.other":"{count} 件のメッセージ","message.turnProcess.subagents.one":"{count} 件のサブエージェント","message.turnProcess.subagents.other":"{count} 件のサブエージェント","message.turnProcess.thoughtForAWhile":"しばらく思考しました","message.turnProcess.separator":" · ","message.stopped":"停止しました","message.branch":"新しい会話に分岐","message.branchUnavailable":"完了したターンの最後のメッセージでのみ利用できます","message.retry.active":"モデルのリクエストを再試行中","message.retry.cancelled":"モデルのリクエストの再試行をキャンセルしました","message.retry.started":"モデルのリクエストを再試行しました","message.retry.scheduled":"モデルのリクエストの再試行を待機中","message.retry.status":"{label}（{retry}/{maximum}）· {seconds}秒","message.retry.delay":"再試行までの待機時間: ","message.retry.failure":"失敗の理由: ","message.failure.auth":"API キーが無効です","message.taskStopped":"タスクを停止しました","message.failure.accountSignedOut":"DeepSeek からサインアウトしたため停止しました。","message.failure.interrupted":"このターンが完了する前に DSH のプロセスが終了しました（強制終了、クラッシュ、またはシャットダウン中のタイムアウトなど）。そのため DSH の再起動時にこのターンを終了扱いにしました。完了していないツール呼び出しの結果は不明です。","message.failure.accountSignInRequired":"DeepSeek にサインインし、リクエストの送信先がアカウント認証に対応していることを確認してください。","message.failure.quota":"リクエストの上限に達しました。","message.turnError":"このターンは失敗しました","message.maxTokens":"出力トークンの上限に達しました","message.maxTokens.hint":"応答が途中で切れました。それまでの出力は会話に残っています。「continue」と送信すると、モデルが再開します。","message.tokensPerSecond":"{tps} トークン/秒","message.turnUsage.title":"ターンの使用量","message.turnUsage.consumed":"使用量 {total}","message.turnUsage.model":"プロバイダー / モデル","message.turnUsage.cacheHit":"キャッシュヒット","message.turnUsage.input":"未キャッシュの入力","message.turnUsage.cacheRead":"キャッシュ済みの入力","message.turnUsage.cacheWrite":"キャッシュ書き込み","message.turnUsage.output":"出力","message.turnUsage.reasoning":"（思考 {tokens}）","message.turnUsage.count":"{count} トークン","duration.secondUnit":"秒","duration.minuteUnit":"分 ","duration.hourUnit":"時間 ","command.running":"実行中…","command.failed":"コマンドが失敗しました","command.done":"完了","command.title":"コマンド","row.running":"実行中","row.failed":"失敗","json.truncated":"… 省略しました（全 {total} 文字）","clock.md":"{m}/{d}","clock.ymd":"{y}-{m}-{d}"},"command":{"section.add":"追加","section.commands":"コマンド","label.goal":"ゴール","label.plan":"プラン","label.feedback":"フィードバック","label.compact":"圧縮","label.permission":"権限","label.export":"エクスポート","description.goal":"長時間のタスクのゴールを設定または表示します","description.plan":"プランモードに入るか、抜けます","description.feedback":"このセッションについてのフィードバックを記録します","description.compact":"古い会話の履歴を圧縮します","description.permission":"権限プリセット（サンドボックスモード + 承認ポリシー）を切り替えます","description.export":"このセッションのログを ZIP アーカイブとしてダウンロードします","token.goal":"goal","token.plan":"plan","token.feedback":"feedback","token.compact":"compact","token.permission":"permission","token.export":"export","search.placeholder":"検索…","search.aria":"オプションを絞り込む","status.loading":"オプションを読み込んでいます…","status.applying":"適用しています…","status.empty":"オプションはありません","overlay.aria":"/{command} のオプション","listbox.aria":"/{command} の一致","notice.attachmentsUnsupported":"/{command} は添付ファイルを受け付けません。先に削除してください"},"common":{"ok":"OK","cancel":"キャンセル","close":"閉じる","copy":"コピー","copied":"コピーしました","codeBlock.title":"コードブロック","codeBlock.wrap":"折り返す","codeBlock.unwrap":"折り返さない","copy.failed":"コピーに失敗しました","copy.value":"値をコピー","copy.json":"JSON をコピー","copy.path":"プロパティのパスをコピー","copy.prettyJson":"整形済み JSON をコピー","copy.compactJson":"1行の JSON をコピー","copy.optionsHint":"{action}。右クリックでコピーのオプションを表示","retry":"再試行","loading":"読み込み中…","load.failed":"読み込みに失敗しました","submit":"送信","submitting":"送信中…","next":"次へ","previous":"前へ","skip":"スキップ","delete":"削除","edit":"編集","save":"保存","search":"検索","more":"その他","collapse":"折りたたむ","expand":"展開","back":"戻る","brand.localBuild":"DSH ローカルビルド","workspace.defaultName":"既定のワークスペース","unknown":"不明","none":"なし","truncated":"省略あり","json.label":"JSON","markdown.footnotes":"脚注","markdown.truncatedCharacters":"… {total} 文字で省略されました","number.thousand":"{value}K","number.million":"{value}M"},"conversation":{"shortcut.newline":"改行","shortcut.complementary":"キュー / ステアの代わりの操作を使う","shortcut.slash":"コマンドメニューを開く","shortcut.mention":"参照メニューを開く","hint.plan":"タスクを説明してプランを作成","hint.goal":"長時間かかるタスクの目標を説明","hint.goal.active":"ゴール有効中 — 編集 / 一時停止 / 再開 / クリア","placeholder.plan":"タスクを説明してプランを作成","placeholder.default":"メッセージを送信","placeholder.unavailable":"セッションは利用できません","placeholder.parentOffline":"親セッションがオフラインのため送信はできませんが、実行は停止できます","placeholder.hero":"何でも聞いてください","placeholder.workspace":"開始するワークスペースを選択","placeholder.steerQueue":"Cmd/Ctrl+Enter で待機中のメッセージをすべてステア","input.commands":"ファイルを追加するか、コマンドを実行","input.file":"ファイル","input.stop":"生成を停止","input.send":"メッセージを送信","input.send.queue":"メッセージをキューに追加","input.send.steer":"メッセージでステア","attachment.pending":"未送信の添付ファイル","attachment.scrollLeft":"添付ファイルを左にスクロール","attachment.scrollRight":"添付ファイルを右にスクロール","attachment.dropTitle":"ファイルや画像をここにドラッグして追加","attachment.dropDesc":"画像の上限: 1 メッセージ最大 {count} 枚、各 {size}","attachment.dropBlocked":"現在、ファイルや画像は追加できません","attachment.directoryDesktopOnly":"フォルダはデスクトップアプリでのみ追加できます。ブラウザでは個別のファイルを追加してください","attachment.pathUnavailable":"フォルダのパスを取得できませんでした。もう一度ドラッグしてください","attachment.pathUnsupported":"パスに参照で扱えない文字が含まれています。名前を変更して再試行してください","image.pending":"未送信の画像","image.openOriginal":"原寸で表示","image.openOriginalLabel":"{label}、クリックで原寸表示","image.remove":"画像 {name} を削除","image.original":"元の画像","image.label":"画像","image.loadFailed":"画像の読み込みに失敗しました。クリックで再試行","image.loading":"画像を読み込み中…","image.preview":"元の画像のプレビュー","image.closePreview":"元の画像のプレビューを閉じる","image.unsupportedType":"対応している画像は PNG、JPG、WebP、GIF のみです","image.tooMany":"1 つのメッセージに添付できる画像は {count} 枚までです","image.fileTooLarge":"各画像は {size} 未満にしてください","image.totalTooLarge":"画像の合計が {size} を超えています。一部を削除して再試行してください","image.tooManyPixels":"画像の解像度が高すぎます。圧縮して再試行してください","image.dimensionTooLarge":"画像の辺は最大 {size}px までです。縮小して再試行してください","image.modelUnsupported":"現在のモデルは画像に対応していません。対応するモデルに切り替えてください","image.sendFailed":"画像の送信に失敗しました（{reason}）。もう一度追加して再試行してください","file.pending":"未送信のファイル","file.remove":"ファイル {name} を削除","file.uploading":"アップロード中…","file.uploadFailed":"アップロードに失敗しました。クリックで再試行","file.retry":"{name} のアップロードを再試行","file.stillUploading":"ファイルのアップロード中です。完了してから送信してください","file.sessionUnavailable":"セッションは利用できないため、ファイルをアップロードできません","file.notStaged":"ファイルのアップロードが完了していません。もう一度追加して再試行してください","file.label":"ファイル","context.aria":"コンテキストの {percent} を使用中","context.used":"コンテキストを使用中","context.system":"システムプロンプト","context.tools":"ツールの定義","context.messages":"メッセージ","settings.enter.title":"処理中の送信動作","settings.enter.description":"エージェントの実行中に Enter と送信ボタンが行う動作です。Cmd/Ctrl+Enter では別の動作になります","settings.enter.queue":"キュー","settings.enter.steer":"ステア","hero.headline":"何をお手伝いしましょうか？","hero.preview":"プレビュー","hero.chooseWorkspace":"ワークスペースを選択","session.hierarchy":"セッションの階層","session.moreViews":"その他の会話の表示","todo.title":"やること","todo.progress.done":"{done} 件完了","todo.progress.active":"{active} 件進行中","todo.progress.pending":"{pending} 件保留中","todo.status.completed":"完了","todo.status.inProgress":"進行中","todo.status.pending":"保留中","todo.rowTitle":"やることリストを更新","tool.title.createGoal":"ゴールを作成","tool.title.getGoal":"ゴールを表示","tool.title.updateGoal":"ゴールを更新","tool.preparing.content":"{kilobytes}KB","tool.title.createSchedule":"リマインダーを作成","tool.title.listSchedules":"リマインダー一覧","tool.title.deleteSchedule":"リマインダーを削除","tool.title.updateSchedule":"リマインダーを更新","detail.state":"状態","detail.todo.completed":"完了","detail.todo.in_progress":"進行中","detail.todo.pending":"保留中","detail.todo.empty":"やることリストは空です","todo.diff.initial":"初期のリスト","todo.diff.compare":"前回のリストからの変更","todo.diff.unavailable":"前回のリストは利用できません","todo.diff.noChanges":"リストに変更はありません","todo.diff.added":"{count} 件追加","todo.diff.updated":"{count} 件更新","todo.diff.removed":"{count} 件削除","todo.diff.unchanged":"{count} 件変更なし","todo.diff.addedItem":"追加","todo.diff.updatedItem":"状態が変更","todo.diff.movedItem":"並べ替え","todo.diff.removedItem":"削除","detail.goal.empty":"ゴールなし","detail.goal.active":"有効","detail.goal.disarmed":"継続待ち","detail.goal.paused":"一時停止中","detail.goal.blocked":"ブロック中","detail.goal.complete":"完了","detail.goal.rounds":"ラウンド","detail.goal.reason":"ブロックの理由","detail.days":"{count} 日","detail.hours":"{count} 時間","detail.minutes":"{count} 分","detail.seconds":"{count} 秒","detail.schedule.once":"1 回","detail.schedule.every":"{interval} ごと","detail.schedule.when":"実行予定","detail.schedule.frequency":"繰り返し","detail.schedule.scheduled":"予定","detail.schedule.overdue":"期限切れ。セッションの再開を待っています","detail.schedule.empty":"リマインダーはありません","detail.schedule.deleted":"削除済み","detail.schedule.count":"リマインダー {count} 件","detail.schedule.daily":"毎日 {time}（{zone}）","detail.schedule.weekly":"毎週 {days} の {time}（{zone}）","detail.schedule.cron":"Cron {expression}（{zone}）","detail.weekday.1":"月","detail.weekday.2":"火","detail.weekday.3":"水","detail.weekday.4":"木","detail.weekday.5":"金","detail.weekday.6":"土","detail.weekday.7":"日","detail.weekday.join":"、","tool.title.inspectProviders":"プロバイダーを調べる","tool.title.queryRuntime":"ランタイムを照会","tool.title.inspectPlugins":"プラグインを調べる","tool.title.workflow":"ワークフローを実行","tool.title.ralph":"Ralph ループを実行","tool.title.readEvent":"イベントを読む","tool.title.searchEvents":"イベントを検索","tool.title.traceEvent":"イベントを追跡","tool.title.searchSessions":"チャットを検索","tool.title.traceSession":"セッションを追跡","tool.title.listModels":"モデル一覧","tool.title.subagent":"サブエージェントを作成","tool.title.listAgents":"サブエージェント一覧","tool.title.sendMessage":"メッセージを送信","tool.title.interruptAgent":"エージェントを中断","tool.title.listJobs":"バックグラウンドジョブ一覧","tool.title.readJob":"ジョブの出力を読む","tool.title.killJob":"バックグラウンドジョブをキャンセル","tool.title.openTerminal":"ターミナルを開く","tool.title.readTerminal":"ターミナルを読む","tool.title.listTerminals":"ターミナル一覧","tool.title.signalTerminal":"ターミナルにシグナルを送信","tool.title.closeTerminal":"ターミナルを閉じる","tool.title.lsp":"コードのシンボルを照会","tool.title.findDefinition":"定義を検索","tool.title.findReferences":"参照を検索","tool.title.findImplementation":"実装を検索","tool.title.hoverSymbol":"シンボルを調べる","tool.title.spawnTeammate":"チームメンバーを作成","tool.title.createTeamTask":"チームのタスクを作成","tool.title.getTeamTask":"チームのタスクを読む","tool.title.updateTeamTask":"チームのタスクを更新","tool.title.listTeamTasks":"チームのタスク一覧","tool.title.waitAgent":"サブエージェントを待つ","detail.recordedResult":"記録された結果","detail.empty":"結果はありません","detail.none":"なし","detail.yes":"はい","detail.no":"いいえ","detail.moreInInspect":"インスペクターでさらに {count} 件の項目を確認できます","detail.status.running":"実行中","detail.status.idle":"待機中","detail.status.ready":"準備完了","detail.status.inactive":"非アクティブ","detail.status.provisioning":"準備中","detail.status.failed":"失敗","detail.status.completed":"完了","detail.status.deleted":"削除済み","detail.status.killed":"キャンセル済み","detail.status.accepted":"受け付け済み","detail.status.queued":"キュー待ち","detail.status.exited":"終了","detail.field.id":"ID","detail.field.revision":"リビジョン","detail.field.platform":"プラットフォーム","detail.field.provider":"プロバイダー","detail.field.model":"モデル","detail.field.role":"役割","detail.field.context":"コンテキスト","detail.field.owner":"担当","detail.field.ready":"準備完了","detail.field.dependencies":"依存関係","detail.field.writeScopes":"書き込み範囲","detail.field.warnings":"警告","detail.field.diagnostics":"診断","detail.field.methods":"メソッド","detail.field.inputSchema":"入力スキーマ","detail.field.outputSchema":"出力スキーマ","detail.field.currentPackage":"現在のパッケージ","detail.field.nextPackage":"次のパッケージ","detail.field.latestRun":"最新の実行","detail.field.packages":"パッケージ","detail.field.registrations":"登録","detail.field.props":"プロパティ","detail.field.data":"データ","detail.field.source":"ソース","detail.field.content":"内容","detail.field.message":"メッセージ","detail.field.messageId":"メッセージ ID","detail.field.root":"ルート","detail.field.pid":"プロセス ID","detail.field.type":"種類","detail.field.time":"時刻","detail.field.seq":"イベント番号","detail.field.turn":"ターン","detail.field.step":"ステップ","detail.field.callId":"呼び出し ID","detail.field.agents":"開始されたエージェント","detail.field.result":"結果","detail.field.parent":"親","detail.field.depth":"深さ","detail.field.exitCode":"終了コード","detail.field.signal":"シグナル","detail.field.previousStatus":"前の状態","detail.field.agent":"エージェント ID","detail.field.job":"ジョブ ID","detail.field.task":"タスク","detail.field.processGroup":"プロセスグループ","detail.field.availability":"利用可否","detail.field.bestMatch":"最も近い一致","detail.field.target":"対象のイベント","detail.field.surface":"記録の状態","detail.agents.count":"{count} 件のエージェント","detail.jobs.count":"{count} 件のバックグラウンドジョブ","detail.terminals.count":"{count} 個のターミナル","detail.tasks.count":"{count} 件のチームタスク","detail.tasks.nextPage":"さらにタスクがあります。次のカーソルは {cursor} です","detail.locations.count":"{count} か所","detail.location":"{line} 行 {column} 列","detail.receipt.delivered":"メッセージを送信しました","detail.receipt.interrupt":"中断を要求しました","detail.receipt.started":"開始しました","detail.receipt.cancel":"キャンセルを要求しました","detail.receipt.alreadyFinished":"すでに完了しています","detail.receipt.signal":"シグナルを送信しました","detail.receipt.closed":"閉じました","detail.receipt.closing":"閉じています","detail.wait.noProgress":"動作中のサブエージェントはありません","detail.wait.title":"サブエージェントの動き","detail.wait.timeout":"待機がタイムアウトしました","detail.wait.changed":"変化を検出しました","detail.agent.reply":"エージェントの応答","detail.models.title":"利用可能なモデル","detail.output.lines":"{total} 行中 {begin}–{end} 行目","detail.output.truncated":"出力を省略しました","detail.providers.count":"{count} 件のインスペクタープロバイダー","detail.plugins.count":"{count} 件の動的プラグイン","detail.workflow.script":"ワークフローのスクリプト","detail.ralph.reportedComplete":"ワーカーが完了を報告しました","detail.ralph.reportedBlocker":"ワーカーが障害を報告しました","detail.ralph.limit":"ラウンドの上限に達しました","detail.report.nextSteps":"残りの作業","detail.trace.replacedBy":"置き換え先","detail.trace.replacementChain":"置き換えの連鎖","detail.trace.replaces":"置き換えられたイベント","detail.trace.sources":"元のイベント","detail.trace.derived":"派生したイベント","detail.trace.ancestors":"祖先のセッション","detail.trace.descendants":"子孫のセッション","detail.matches.count":"{count} 件の一致","detail.matches.capped":"結果の上限に達しました。さらに表示するには検索条件を絞ってください","detail.event.neighbors":"前後のイベント","todo.completed":"{done}/{total} 完了","command.attachmentsUnsupported":"/{command} は添付ファイルを受け付けません。先に削除してください","ask.rowTitle":"質問","ask.waiting":"回答待ち","ask.pending":"続行済み。回答はまだ可能です","ask.pendingDetail":"これらの保留中の質問は、入力欄から引き続き回答できます。","ask.reopen":"回答","ask.review":"回答を表示","ask.closed":"終了","ask.closedDetail":"この質問は終了しています。結果は下の会話に表示されています。","ask.cancelled":"キャンセル済み","ask.cancelledDetail":"回答が送信される前に、この質問セットはキャンセルされました。","ask.interrupted":"中断","ask.interruptedDetail":"回答が送信される前に、この質問セットは中断されました。","ask.answered":"{total} 件中 {answered} 件に回答","ask.skipped":"未回答","bash.running":"実行中","bash.failed":"失敗","bash.stopped":"停止しました","row.running":"実行中","row.preparing":"ツール呼び出しを準備中","row.failed":"失敗","row.stopped":"停止しました","row.commandArguments":"コマンドの引数","row.input":"入力","row.output":"出力","row.inspect":"確認","row.imageSize":"{width}x{height}px、{bytes} バイト","row.imageSizeDownscaled":"{width}x{height}px（元は {originalWidth}x{originalHeight}px から縮小）、{bytes} バイト","tool.title.search":"検索","tool.title.read":"読み取り","tool.title.bash":"Bash","tool.title.write":"書き込み","tool.title.edit":"編集","tool.title.code":"コード","tool.title.generic":"ツール呼び出し","tool.title.inspect":"Cordis 環境を照会","tool.title.runCordis":"Cordis プラグインを実行","tool.title.stopCordis":"Cordis プラグインを停止","tool.title.removeCordis":"Cordis プラグインを削除","tool.title.pwsh":"Pwsh","tool.title.readImage":"画像を読み取り","tool.title.grep":"Grep","tool.title.glob":"Glob","tool.title.webSearch":"検索","tool.title.webFetch":"取得","tool.autoReviewRejected":"自動レビューにより拒否されました","tool.autoReviewNotExecuted":"ツールは実行されませんでした。理由: {reason}","tool.autoReviewReasonFallback":"自動レビューはこの操作を承認しませんでした","diff.collapseAria":"差分を折りたたむ","diff.expandAria":"さらに {count} 行の差分を展開","diff.expandRest":"… 残り {count} 行","read.window":"{total} 行中 {shown} 行を表示","read.collapseAria":"内容を折りたたむ","read.expandAria":"さらに {count} 行を展開","read.expandRest":"… 残り {count} 行","search.paths":"{shown} 件のパス","search.paths.truncated":"{total} 件中 {shown} 件のパスを表示","search.matches":"{shown} 件の一致・{files} ファイル","search.matches.truncated":"{total} 件中 {shown} 件の一致を表示・{files} ファイル","search.noResults":"見つかりません","search.collapseAria":"結果を折りたたむ","search.expandAria":"さらに {count} 行の結果を展開","search.expandRest":"… 残り {count} 行","web.noResults":"結果が見つかりません","web.sourcesTruncated":"ソース一覧を省略しました","web.http":"HTTP","web.contentTruncated":"内容を省略しました","details.running":"実行中…","queue.count":"キューに {n} 件のメッセージ","queue.sending":"送信中…","queue.image":"キュー内のメッセージの画像","queue.file":"キュー内のファイル {name}","queue.edit":"キュー内のメッセージを編集","queue.edit.unsupported":"テキスト以外の内容を含むため、編集はまだ対応していません","queue.save":"キュー内のメッセージを保存","queue.cancelEdit":"編集を取り消す","queue.remove":"キュー内のメッセージを削除","queue.steer":"キュー内のメッセージで指示を追加","queue.steer.unavailable":"指示の追加は、エージェントの実行中のみ使えます","error.sessionInUse":"このセッションは、別の実行中の DSH（dsh web やデスクトップアプリなど）で使用されている可能性があります。ほかの実行中の DSH を終了してから、もう一度お試しください。","queue.editFailed":"編集に失敗しました。このメッセージは送信が始まっている可能性があります。","queue.removeFailed":"削除に失敗しました。このメッセージは送信が始まっている可能性があります。","queue.steerFailed":"指示の追加に失敗しました。もう一度お試しください。","terminal.signal":"シグナル {signal}","terminal.exitCode":"終了コード {code}","terminal.noExitCode":"終了コードなし","terminal.commandLine":"コマンドライン {n}","terminal.running":"実行中","terminal.failed":"失敗","terminal.done":"完了","terminal.noOutput":"出力はありません","terminal.collapseAria":"出力を折りたたむ","terminal.expandAria":"残り {n} 行の出力を展開","terminal.expandRest":"… 残り {n} 行","terminal.sendInput":"（入力を送信）","terminal.session":"ターミナル {sessionId}"},"cordis":{"row.defineTitle":"Cordis プラグインを登録","a11y.preparing":"Cordis のツール呼び出しを準備中","row.runTitle":"Cordis プラグインを実行","row.updateTitle":"Cordis プラグインを更新","row.stopTitle":"Cordis プラグインを停止","row.removeTitle":"Cordis プラグインを削除","purpose.missing":"（目的が指定されていません）","status.idle":"準備完了","status.awaitingApproval":"承認待ち","status.failed":"実行に失敗しました","status.clientPending":"クライアントの有効化を待機中","status.running":"実行中","status.removed":"削除済み","status.superseded":"新しい実行結果があります","run.removed":"このパッケージは存在しなくなりました","run.superseded":"下に新しい実行カードがあります","panel.hint":"実行の操作は、設定の上にある Cordis パネルにあります","panel.plugins.aria":"Cordis プラグイン","panel.approvals.aria":"Cordis の承認","panel.trigger":"Cordis プラグイン","panel.runningCount":"{count} 件実行中","panel.title":"Cordis プラグイン","panel.empty":"プラグインはまだ定義されていません","panel.loading":"読み取り中…","panel.readFailed":"プラグイン一覧の読み取りに失敗しました: {message}","panel.group.current":"このセッション","panel.group.others":"他のセッション","panel.version":"バージョン","panel.current":"現在: {packageId}","panel.next":"次: {packageId}","action.approve":"許可","action.approveOnce":"このバージョンのみ許可","action.approvePlugin":"このプラグインの今後のバージョンを許可","action.decline":"拒否","action.run":"実行","action.stop":"停止","action.remove":"削除","action.retry":"再試行","action.rollback":"元に戻す","action.inspect":"確認","render.failedAbdicated":"{slot} での描画に失敗したため、既定の UI に戻しました:","render.failedHeld":"{slot} での描画に失敗しました:","a11y.defining":"プラグインを定義中","a11y.failed":"定義に失敗しました","a11y.stopped":"定義が中断されました","body.source":"プラグインのソース","body.hostCode":"ホスト","body.clientCode":"クライアント","body.output":"結果","body.copy":"コピー","body.copied":"コピーしました"},"cotTranslation":{"provider":"翻訳サービス","google":"Google","bing":"Bing","deepseekAccount":"DeepSeek Flash — アカウント（有料）","deepseekOfficial":"DeepSeek Flash — 公式 API（有料）","providerUnavailableOption":"{provider} — 利用不可","providerUnavailable":"このプロバイダーは利用できません。DeepSeek アカウントまたは公式 API プロバイダーを設定するか、利用可能なサービスを選んでください。","paidNotice":"キャッシュされていない断片ごとに、選択したアカウントまたは公式 API の認証情報を使って、有料の DeepSeek Flash リクエストが送信されます。再度開くと保存済みの結果が再利用されます。プロバイダー、言語、元のテキスト、リクエスト設定を変更すると、新たに有料リクエストが送信される場合があります。","anonymousNotice":"Bing と Google は翻訳のログインや API キーが不要です。匿名のエンドポイントでは、リクエストが拒否されたり制限されたりすることがあります。","targetLanguage":"翻訳先の言語","targetLanguageHint":"auto は UI の言語に従います。zh、en、ja などの言語コードも使えます。","privacy":"展開された思考は、選択したサービスに送信されます。非公開のコードや会話の内容が含まれる場合があります。","translation":"翻訳を表示","original":"原文を表示","retry":"再試行","failed":"翻訳に失敗しました。原文を表示しています。","translating":"思考を翻訳しています","invalidProvider":"翻訳サービスを選択してください。","invalidLanguage":"auto または zh、en、ja などの言語コードを入力してください。","overridden":"上書きあり","reset":"既定値に戻す","unavailable":"翻訳の設定は利用できません。","readOnly":"この環境では、設定は読み取り専用で保存されます。","saveFailed":"環境がこれらの値を受け付けませんでした。修正のため、入力内容はそのまま残しています。","save":"保存","saving":"保存しています…","copy":"コピー","copied":"コピーしました","codeTitle":"コードブロック","wrap":"行を折り返す","unwrap":"行の折り返しを解除","footnotes":"脚注"},"deepseek-model-label-1017":{"badge.label":"1017"},"deliverables":{"presented.nativeUnavailable":"このファイルには利用可能なホストパスがありません。サイドバーでプレビューしてください。","presented.revealError":"ファイルマネージャーで表示できませんでした。もう一度お試しください。","presented.directoryError":"含まれるフォルダーを開けませんでした。もう一度お試しください。","presented.directoryOpening":"含まれるフォルダーを開いています…","presented.directoryOpened":"含まれるフォルダーを開くよう要求しました","presented.revealed":"ファイルマネージャーで表示するよう要求しました","presented.revealing":"ファイルマネージャーで表示しています…","presented.unavailable":"このホストには、外部アプリでファイルやフォルダーを開けるデスクトップがありません。ファイルはサイドバーでプレビューできます。","presented.retry":"再試行","presented.hostError":"ホストのデスクトップ情報を読み取れませんでした","presented.preview":"サイドバーでプレビュー","presented.previewButton":"{name} をサイドバーで開く","presented.previewCard":"{name} をサイドバーでプレビュー","presented.all":"すべて {count} 件のファイル","presented.expandAria":"配信された {count} 件のファイルをすべて表示","presented.collapse":"折りたたむ","presented.collapseAria":"配信されたファイルを折りたたむ","presented.opening":"開いています…","presented.opened":"開くよう要求しました","presented.error":"開けませんでした。クリックして再試行してください。","presented.file":"ファイル","row.title":"ファイルを提示","row.running":"配信中","row.preparing":"成果物を準備中","row.ok":"配信済み","row.error":"配信に失敗しました","row.stopped":"中断されました","row.inspect":"呼び出しを確認","changes.title":"{count} 件のファイルを編集","changes.singleTitle":"{name} を編集","changes.added":"+{count}","changes.deleted":"-{count}","changes.binary":"バイナリ","changes.openReview":"このターンの変更をサイドバーで確認","changes.all":"すべて {count} 件のファイル","changes.expandAria":"変更された {count} 件のファイルをすべて表示","changes.collapse":"折りたたむ","changes.collapseAria":"変更されたファイルを折りたたむ","changes.oversized":"大きすぎます","changes.viewDiff":"{name} の変更を表示","review.title":"レビュー · ターン {turn}","review.selectFile":"レビューするファイルを選択","review.split":"左右表示に切り替え","review.unified":"統合表示に切り替え","review.splitAria":"左右表示","review.wrap":"行の折り返しを有効にする","review.nowrap":"行の折り返しを無効にする","review.wrapAria":"行の折り返し","review.openFile":"ファイル全体をサイドバーで開く","review.openFileAria":"{name} をサイドバーで開く","diff.loading":"変更を読み込み中…","diff.missing":"このターンの変更内容はもう利用できません","diff.error":"変更を読み取れませんでした","diff.binary":"バイナリファイルのため変更を表示できません","diff.oversized":"ファイルが大きすぎるため変更を表示できません","diff.created":"このターンで作成","diff.deleted":"このターンで削除","diff.unchanged":"両側の行は同じです","diff.coarse":"行単位の比較がタイムアウトしたため、ファイル全体の置き換えとして表示しています","diff.truncated":"先頭 {count} 行を表示しています"},"directory-browser":{"browser.title":"ワークスペースのディレクトリを選択","browser.home":"ホーム","browser.newFolder":"新しいフォルダ","browser.folderName":"フォルダ名","browser.createIn":"「{name}」に新しいフォルダ","browser.untitledFolder":"無題のフォルダ","browser.create":"作成","browser.cancel":"キャンセル","browser.open":"開く","browser.editPath":"パスを編集","browser.loading":"読み込み中…","browser.truncated":"フォルダが多すぎるため、一覧は先頭だけを表示しています。","browser.showHidden":"隠しファイルを表示"},"documentHtml":{"title":"HTML","frame":"HTML 文書のプレビュー","loading":"文書を描画中...","failed":"この HTML 文書はプレビューできませんでした。"},"documentMarkdown":{"viewer.label":"Markdown","code.copy":"コピー","code.copied":"コピーしました","footnotes":"脚注"},"entryCustomization":{"install":"他のプラグインを探す","create":"プラグインを作成","createPrompt.sidebar":"左サイドバーに項目を持つ DSH プラグインを作成してください。","createPrompt.conversation":"DSH の会話表示プラグインを作成してください。","createPrompt.rightbar":"右サイドバーに項目を持つ DSH プラグインを作成してください。"},"feedback":{"action.like":"良い応答","action.likeActive":"評価を取り消す","action.dislike":"悪い応答","action.dislikeActive":"評価を取り消す","dialog.title":"フィードバックを送信","dialog.categories":"フィードバックの分類","dialog.detail":"フィードバックの詳細","dialog.hint":"改善のために詳細を追加してください。送信内容には現在の会話の記録が含まれます。","category.task-result":"タスクの結果","category.instruction-following":"指示の理解と遂行","category.product-interaction":"製品の機能と操作","category.service-stability":"安定性と速度","category.resource-cost":"リソースの使用量と費用","category.security-privacy-permission":"セキュリティ、プライバシー、権限","category.other":"その他","toast.recorded":"フィードバックをありがとうございます","error.conflict":"このフィードバックは別の場所で変更されたため、最新の状態を表示しています","error.load":"フィードバックを読み込めませんでした","error.generic":"フィードバックを保存できませんでした","error.noteTooLarge":"説明が長すぎます。短くしてから再度送信してください"},"goal":{"phase.active":"進行中のゴール","phase.active.disarmed":"非アクティブなゴール","phase.paused":"一時停止中のゴール","phase.blocked":"ブロックされたゴール","objective.aria":"ゴールの目標","commandInput.aria":"コマンド入力","action.save":"ゴールを保存","action.cancel":"編集をキャンセル","action.pause":"ゴールを一時停止","action.resume":"ゴールを再開","action.edit":"ゴールを編集","action.clear":"ゴールを消去"},"inspectorPanel":{"title":"NodeJS インスペクター","toggle":"NodeJS インスペクターの表示を切り替え","close":"折りたたむ","resize":"NodeJS インスペクターのパネルのサイズを変更","frameTitle":"NodeJS インスペクター"},"job":{"count.live.one":"バックグラウンドジョブ {count} 件を実行中","count.live.other":"バックグラウンドジョブ {count} 件を実行中","count.idle.one":"バックグラウンドジョブ {count} 件","count.idle.other":"バックグラウンドジョブ {count} 件","list.aria":"バックグラウンドジョブ","section.live":"実行中","section.settledCount":"終了 {count} 件","section.clear":"クリア","row.expandAria":"{label} のライブ出力を表示","row.collapseAria":"{label} のライブ出力を非表示","kill.stop":"タスク {label} を停止","kill.confirm":"もう一度クリックして確定","kill.confirmAction":"停止を確定","kill.failed":"停止できませんでした","status.running":"実行中","status.stopping":"停止中","status.completed":"完了","status.killed":"キャンセル済み","status.failed":"失敗","duration.seconds":"{seconds}秒","duration.minutes":"{minutes}分{seconds}秒","duration.hours":"{hours}時間{minutes}分","duration.title.live":"{duration} 実行中","duration.title.done":"所要時間 {duration}","output.gap":"… 以前の出力は破棄されました …","output.error":"ライブ出力のストリームが中断されました: {error}","terminal.signal":"シグナル {signal}","terminal.exitCode":"終了コード {code}","terminal.noExitCode":"終了コードなし","terminal.commandLine":"コマンドライン {n}","terminal.running":"実行中","terminal.failed":"失敗","terminal.done":"完了","terminal.copy":"コピー","terminal.copied":"コピーしました","terminal.noOutput":"（出力なし）","terminal.collapse":"折りたたむ","terminal.collapseAria":"出力を折りたたむ","terminal.expand":"さらに {n} 行表示","terminal.expandAria":"折りたたまれた出力 {n} 行を展開"},"model":{"provider.account":"DeepSeek アカウント","command.label":"モデル","command.description":"この会話で使うモデルを選択","option.loadError":"カタログの読み込みに失敗しました: {message}","trigger.fallback":"モデルを選択","trigger.loading":"モデルを読み込み中…","trigger.selectAria":"モデルを選択","trigger.aria":"モデルを選択、現在 {model}","trigger.ariaEffort":"モデルを選択、現在 {model}、思考の強度 {effort}","menu.aria":"モデルと思考の強度","menu.model":"モデル","menu.effort":"強度","effort.providerDefault":"既定","status.loading":"モデル一覧を更新中…","error.action":"モデルの操作に失敗しました: {message}","error.sessionInUse":"このセッションは既に使用中です。別の実行中の DSH（dsh web やデスクトップアプリなど）が使用している可能性があります。実行中の他の DSH を終了してから、もう一度お試しください。","action.reload":"再読み込み","warning.groupLoad":"{name} の読み込みに失敗しました: {message}","search.placeholder":"モデルを検索…","search.clear":"検索をクリア","search.empty":"一致するモデルは見つかりません。","empty.models":"利用できるモデルはありません。","empty.efforts":"このモデルには思考の強度の段階はありません。"},"open-in-app":{"open.title":"{app} で開く","path.appDefault":"{app}（既定）","path.appsError":"アプリを読み込めませんでした","shortcut.busy":"ワークスペースを開いています","shortcut.unavailable":"現在のワークスペースまたはローカルのアプリが使えません","open.tooltip":"ローカルで開く","path.open":"開く","path.more":"他の開き方","path.reveal":"ファイルの場所を表示","path.openError":"開けませんでした。もう一度お試しください。","path.revealError":"ファイルの場所を表示できませんでした。もう一度お試しください。","app.cursor":"Cursor","app.vscode":"VS Code","app.vscodeinsiders":"VS Code Insiders","app.windsurf":"Windsurf","app.zed":"Zed","app.sublimetext":"Sublime Text","app.xcode":"Xcode","app.androidstudio":"Android Studio","app.intellij":"IntelliJ IDEA","app.pycharm":"PyCharm","app.webstorm":"WebStorm","app.phpstorm":"PhpStorm","app.goland":"GoLand","app.rider":"Rider","app.rustrover":"RustRover","app.fork":"Fork","app.sourcetree":"Sourcetree","app.github":"GitHub Desktop","app.tower":"Tower","app.gitkraken":"GitKraken","app.smartgit":"SmartGit","app.sublimemerge":"Sublime Merge","app.ghostty":"Ghostty","app.warp":"Warp","app.iterm":"iTerm2","app.kitty":"kitty","app.windowsterminal":"Windows Terminal","app.gitbash":"Git Bash","app.gnometerminal":"GNOME Terminal","app.konsole":"Konsole","app.finder":"Finder","app.explorer":"エクスプローラー","app.filemanager":"ファイル","app.terminal":"ターミナル"},"permission.access":{"mode":"アクセスモード（現在: {name}）","close":"閉じる","preset.readOnly":"読み取り専用","preset.workspaceWrite":"ファイルへの書き込み","preset.fullAccess":"フルアクセス","confirm.title":"フルアクセスを有効にしますか？","confirm.description":"フルアクセスでは確認の手順が減り、機密性の高い操作、ファイルの変更、外部コマンドを含め、エージェントが直接より多くの操作を実行できます。現在のタスクを信頼できる場合にのみ使用してください。","confirm.acknowledge":"リスクを理解したうえで続行します","confirm.cancel":"キャンセル","confirm.enable":"フルアクセスを有効にする","auto.label":"自動レビュー","auto.badge":"試験","auto.description":"同じモデルによる試験的なレビューを経て、ネイティブツール呼び出しと PTC の内部呼び出しのすべてを、サンドボックスなしで実行します。","auto.confirm.title":"自動レビュー（試験的）を有効にしますか？","auto.confirm.description":"自動レビューはサンドボックスなしで実行されます。ネイティブツール呼び出しと PTC の内部呼び出しのたびに、現在のエージェントと同じモデルが許可するかどうかを判断します。拒否された呼び出しは、あなたが承認するか却下するかを選べます。この機能は試験的で、操作を誤って許可または拒否することがあり、追加のトークンを使用します。","auto.confirm.acknowledge":"これらのリスクを理解したうえで続行します","auto.confirm.enable":"自動レビューを有効にする"},"plan":{"chip.label":"プラン","preview.title":"プラン","preview.document":"プラン · Markdown","preview.action":"開く","preview.open":"プランをサイドバーで開く","preview.full":"プラン全体を表示","preview.openNamed":"プランを開く: {title}","preview.loading":"プランを読み込んでいます…","preview.failed":"プランを読み込めませんでした","preview.invalidAddress":"プランの URL が正しくありません","preview.historyUnavailable":"セッションの履歴を利用できません","preview.notFound":"このプランは見つかりませんでした","preview.unavailable":"プランのプレビューを利用できません","preview.expired":"この一時的なプランのプレビューは期限切れです。保留中のレビューカードから開き直してください。","chip.on.aria":"プランモードはオンです。押すとオフになります","chip.on.title":"プランモードはオンです — クリックでオフ (/plan off)","chip.exitFailed":"プランモードを終了できませんでした"},"pluginManager":{"panel":"プラグイン","title":"プラグイン","intro":"プラグインのインストール、有効化、設定を行います","infoLabel":"プラグインについて","infoDescription":"公式プラグインの設定や、その他のプラグインのインストール・管理をここで行います。組み込みプラグインの一覧と実行状況は「設定 → 組み込みプラグイン」で確認できます。","loading":"プラグインを読み込んでいます…","error":"すべてのプラグインを読み込めませんでした。ネットワークの問題が原因の可能性があります","unavailable":"この環境では管理可能なプロフィールがないため、ここでプラグインのインストールや切り替えはできません。","retry":"再試行","refresh":"更新","refreshError":"更新できませんでした。もう一度お試しください。","empty":"まだプラグインはインストールされていません。","addPlugin":"プラグインを追加","chooseAddMethod":"プラグインの追加方法を選択","installExisting":"サードパーティのプラグインをインストール","installExistingDescription":"npm パッケージ、Git リポジトリ、ローカルディレクトリに対応しています","restartNotice":"変更を反映するには DSH を再起動してください。{reason}","restartReasonNoHmr":"このプロフィールでは、変更は起動時にのみ反映されます。","restartReasonPackageMoved":"インストール済みのパッケージが別のディレクトリを参照するようになったか、DSH 本体が提供するパッケージを置き換える変更です。別の場所からインストールする前に、パッケージをアンインストールしてください。","restartReasonHostModule":"変更が DSH 本体が読み込んだモジュールに及びます。","restartReasonUnmanagedPlugin":"変更が、プラグイン一覧の外で動いているプラグインに及びます。","restartReasonModuleComparison":"読み込み済みのプラグインとそのファイルを比較できませんでした。","overriddenNotice":"{name} は保存されましたが、より優先度の高い設定によって上書きされているため、有効になっていません","bundlesTitle":"インストール済みのプラグイン","basicTitle":"組み込みプラグインの設定","extensionsTitle":"試験的なプラグイン","moreTitle":"試験的なプラグイン","moreAction":"その他","tabsLabel":"プラグインの表示切り替え","installedTab":"インストール済み","statusProblem":"問題あり","statusBeta":"試験的","reasonLabel":"理由","metadataError":"パッケージのメタデータエラー: {error}","previewAlt":"{name} の機能プレビュー","previewUnavailable":"機能プレビューを表示できませんでした","versionTag":"v{version}","partsLabel":"コンポーネント","sourceTitle":"ソース","sourceSpec":"コードのソース","sourceBuiltIn":"組み込み","sourceVersion":"現在のバージョン","partsEmpty":"このプラグインパックにはコンポーネントが含まれていません。","partsCountTotal":"全 {count} 件","partsCountRunning":"{count} 件 実行中","partsCountOff":"{count} 件 オフ","partOff":"オフ","partsCountFailed":"{count} 件 失敗","partsFilter":"コンポーネントを絞り込む","partsFilterEmpty":"一致するコンポーネントはありません。","partToggle":"コンポーネント {name} を有効にする","rowPhasePending":"依存関係を待っています","rowPhaseLoading":"読み込み中","rowPhaseActive":"実行中","rowPhaseFailed":"問題あり","rowPhaseUnloading":"読み込み解除中","enableToggle":"{name} を有効にする","openDetail":"{name} を表示","backToList":"プラグイン一覧に戻る","crumbRoot":"プラグイン","backToPackage":"{name} に戻る","configureRow":"{name} を設定","rowStateIdle":"実行されていません","uninstall":"アンインストール","uninstallLabel":"{name} をアンインストール","installTitle":"プラグインを追加","installDescription":"プラグインのパッケージ名、GitHub リポジトリの URL、またはローカルディレクトリのパスを入力してください。","installSpecLabel":"パッケージ名または URL","installSpecPlaceholder":"例: dsh-plugin-whale-pet","installGuideToggle":"インストールの手引きと例","installGuideHide":"手引きを隠す","installGuideIdTitle":"プラグインの npm パッケージ名を入力","installGuideIdExample":"dsh-plugin-whale-pet","installGuideIdHint":"プラグインのパッケージ名は npm パッケージ名です（dsh-xxx や @author/plugin のような形式）。コミュニティプラグインの README にあるインストールコマンドで、dsh plugin add または pnpm add の後ろに書かれている部分です。","installGuideExampleLabel":"例: ","installGitTemplateHint":"ここを実際の Git リポジトリの URL に置き換えてください。","installPathTemplateHint":"ここを実際のローカルプラグインディレクトリのパスに置き換えてください。","installGuideFill":"例を使う","installGuideFillAria":"例 {example} を使う","installGuideSafety":"信頼できるプラグインだけをインストールしてください。プラグインはあなたの権限で動作し、DeepSeek Harness を壊したりデータを漏らしたりするおそれがあります。","installUpgradeNotice":"オンデマンドの公式プラグインは、DSH とバージョンが異なる場合に「更新」を表示します。その他のプラグインを更新するには、アンインストールしてから再インストールしてください。","registryToggle":"レジストリ","registryLegend":"プラグインをダウンロードする npm レジストリ","registryDefault":"既定のレジストリ","registryOfficial":"公式 npm レジストリ","registryNpmmirror":"中国本土のミラー","registryCustom":"カスタムアドレス","registryCustomPlaceholder":"https://npm.example.com/","registryCustomHint":"http:// または https:// で始まる、社内または非公開の npm レジストリのアドレスを入力してください。ログインが必要な場合は、認証情報をこのマシンの ~/.npmrc に保存してください。","registryCustomInvalid":"http:// または https:// で始まるアドレスを入力してください","registryListSeparator":"、","sentenceSeparator":" ","installRun":"インストール","installChecking":"確認中…","installConfirmedTitle":"プラグインをインストール","installConfirmedRefused":"このプラグインはインストールできません","installProblemInvalid":"インストールできるパッケージ名または URL ではありません: {reason}","installProblemInstalled":"このプラグインはすでにインストールされています。アップグレードするには、アンインストールしてから再度インストールしてください","installProblemShipped":"このプラグインは DSH に同梱されています。DSH を更新すると一緒に更新されます","installProblemNotFound":"該当するプラグインが見つかりませんでした","installProblemNotPackage":"パスが存在しないか、有効なプラグインパッケージではありません","installProblemNotBundle":"このパッケージはバンドルを宣言していないため、プラグインとしてインストールできません: {reason}","installProblemNetwork":"プラグインレジストリに接続できませんでした。ネットワークを確認して、もう一度お試しください","installProblemNetworkAll":"どのレジストリにも接続できませんでした（試行先: {registries}）。ネットワークまたはプロキシの設定を確認するか、レジストリを変更してください","installProblemUnknown":"プラグインを確認できませんでした: {reason}","installingTitle":"プラグインをインストールしています…","installedTitle":"インストール済み","statusNotInstalled":"未インストール","statusMissingFiles":"パッケージを利用できません","statusUpdateAvailable":"更新があります","sourceNotInstalled":"未インストール","sourceTargetSpec":"この DSH 用のソース","sourceTargetVersion":"この DSH 用のバージョン","update":"更新","updateLabel":"{name} を更新","installFailedTitle":"プラグインをインストールできませんでした","installGithubFailedTitle":"GitHub に接続できません","installGithubTimeoutTitle":"GitHub への接続がタイムアウトしました","installGithubFailedDescription":"別のインストール元をお試しください。","installUseGithubMirror":"中国本土のミラーを使う","installTryAnotherWay":"別の方法を試す","installPackageLabel":"プラグインのパッケージ名","installEdit":"編集","installEditAria":"編集に戻る","installCancelAndEdit":"インストールを取り消して編集に戻る","installApplyingCancellationError":"取り消しは確認できませんでした。インストールを適用中のため、結果をお待ちください。{reason}","installReconcile":"インストール状態を確認","installUnknownTitle":"インストール結果を取得できません","installUnknownDescription":"DSH 本体には、このリクエスト ID のインストールは有効になっていません。もう一度試す前に、プラグイン一覧を確認してください。","installResultUnconfirmed":"インストール結果を受け取れませんでした。インストール状態を確認してください。{reason}","installAwaitingAcceptance":"DSH 本体によるインストールの受け付けを待っています。取り消しは確認後に自動で再試行されます。","installBackgroundUnknown":"インストール結果を取得できません。プラグイン一覧を確認してください。","installCancel":"インストールを取り消す","installCloseCancels":"インストールを取り消して閉じる","installViewTask":"インストールを表示","installUnconfirmedTitle":"インストール状態を確認できません","installBackgroundDone":"インストールが完了しました。インストールの詳細を表示してください。","installBackgroundFailed":"インストールに失敗しました。インストールの詳細を表示してください。","installBackgroundUnconfirmed":"インストール状態を確認できません。詳細はインストールを表示してご確認ください。","installBackgroundApplying":"インストールを適用中のため、取り消せません。インストールの進行状況を表示してください。","installStarting":"インストールを準備しています…","installCancelling":"インストールを停止しています…","installApplying":"設定を適用しています。しばらくお待ちください…","installCancelledShort":"取り消し済み","installCancelled":"インストールを取り消しました。プラグインは有効になっておらず、ダウンロード済みのファイルが残っている場合があります","installCancelUnconfirmed":"インストールが停止したことを確認できていません。取り消しを再試行するか、インストール結果をお待ちください。{reason}","installEnableNow":"今すぐ有効にする","installDetailsShow":"インストールの詳細を表示","installDetailsHide":"インストールの詳細を隠す","installVersion":"バージョン {version}","installSubjectPath":"ローカルディレクトリ","installSubjectGit":"Git リポジトリ","installSubjectTarball":"圧縮アーカイブ（tarball）","installLocation":"{dir} にインストールされます","installRetry":"再試行","installChangeRegistry":"レジストリを変更","installAttempt":"{previous} ではパッケージを提供できませんでした。{registry}（レジストリ {index}/{total}）経由で再試行しています","installAttemptBadge":"試行 {index} · {registry}","installFailureNetwork":"ネットワーク接続に失敗しました","installFailureNetworkAll":"どのレジストリにも接続できませんでした（試行先: {registries}）。ネットワークまたはプロキシの設定を確認するか、レジストリを変更して再試行してください。","installFailureNetworkHost":"{host} に接続できませんでした。GitHub のアドレスや .tgz のリンクはレジストリ経由では取得されません。このマシンから直接、またはプロキシ経由で接続できる必要があります。プラグインが npm にも公開されている場合は、代わりにそのパッケージ名を入力してください。","installFailureNotFound":"該当するプラグインが見つかりませんでした","installFailureNoMatchingVersion":"要求に一致するバージョンがありません","installFailureDiskFull":"ディスクの空き容量が不足しているため、インストールを中止しました","installFailurePermission":"書き込み権限がないため、プラグインをインストールできません","installFailureBuildBlocked":"依存パッケージのインストールスクリプトを実行するには、あなたの許可が必要です","installFailureBuildBlockedManual":"pnpm がインストールスクリプトをブロックしました。pnpm-workspace.yaml の allowBuilds で許可してから再試行してください","installFailureIntegrity":"ダウンロードしたパッケージの整合性チェックに失敗しました","installFailureTimeout":"インストールがタイムアウトしました","installFailurePnpmMissing":"pnpm が見つからないため、何もインストールできません","installFailureGeneric":"インストール中に問題が発生しました。詳細を確認してください","terminalCommandLine":"コマンドライン {n}","terminalRunning":"実行中","terminalFailed":"失敗","terminalDone":"完了","terminalCopy":"コピー","terminalCopied":"コピーしました","terminalNoOutput":"出力なし","terminalCollapseAria":"出力を折りたたむ","terminalCollapse":"折りたたむ","terminalExpandAria":"残りの {n} 行の出力を展開","terminalExpand":"残り {n} 行を表示","terminalExitCode":"終了コード {code}","terminalSignal":"シグナル {signal}","terminalNoExitCode":"終了コードなし","installDoneNothing":"新しい依存関係はなく、インストールが完了しました。","installDoneRestart":"インストールしました。読み込むには DSH を再起動してください。{reason}","installDoneApproved":"{names} のインストールスクリプトを許可しました","installDoneOtherVersion":"pnpm のサプライチェーンのセキュリティポリシー（minimumReleaseAge）により、必要な期間より新しく公開されたバージョンは自動でインストールされないため、今回のインストールでは最新版 {version} ではなく {installed} が使われました。公開直後のバージョンはこの待機期間を経ておらず、未検出の悪意あるコードや不具合を含むおそれがあります。{version} が必要な場合は、現在のバージョンをアンインストールしてから {exact} をインストールし、そのバージョンを指定してください。","installApprovalTitle":"インストールスクリプトの許可が必要です","installApprovalDescription":"これらのパッケージには、pnpm が実行しなかったインストールスクリプトがあります。","installApprovalConsequence":"許可すると、スクリプトはあなたの権限でこの環境上で実行され、その許可はこのプロフィールに保存されます。","installApprovalCaution":"信頼できるパッケージだけを許可してください。","installApproveAndRetry":"これらのスクリプトを許可して再試行","installClose":"完了","close":"閉じる","cancel":"キャンセル","confirmUninstallTitle":"「{name}」をアンインストールしますか？","confirmUninstallDescription":"アンインストールすると、そのプラグインが提供していた機能もなくなります。","confirmUninstall":"アンインストール","failedEnable":"有効にできませんでした: {reason}","failedDisable":"無効にできませんでした: {reason}","failedUninstall":"アンインストールできませんでした: {reason}","failedRowEnable":"コンポーネントを有効にできませんでした: {reason}","failedRowDisable":"コンポーネントを無効にできませんでした: {reason}","reasonManagementRequired":"プラグイン管理に必要なため、オフにもアンインストールもできません。","reasonUnaddressable":"プロフィールのパッチでは、これを一意に指定できません。","reasonUnknownPlugin":"該当するプラグインがありません。","reasonInvalidSpec":"有効なパッケージ名または URL を入力してください。","reasonAlreadyInstalled":"このパッケージはすでにインストールされています。別のバージョンをインストールするには、先にアンインストールしてください。","reasonAmbiguousInstall":"依存関係の変更から、どのパッケージがインストールされたのかを判別できません。","reasonNotBundle":"このパッケージはバンドルを宣言していないため、プラグインとして管理できません。","reasonNotRemovable":"このパッケージはプロフィールの所有ではないか、プラグイン管理に必要なため、削除できません。","reasonStopProfile":"このプロフィールは HMR なしで動作しています。停止してから dsh plugin でパッケージをアンインストールしてください。","reasonBundleInUse":"他の設定がこのバンドルのコンポーネントを使用中です。先にそれらをオフにしてください。","reasonStaleApproval":"保留中のスクリプト許可が変わりました。再度インストールして更新してください。","reasonIncompatibleVersion":"{plugin} は DSH {runtime} と互換性がありません（必要: {requirements}）。実行するとクラッシュやデータ損失が起きるおそれがあります。","reasonIncompatibleVersionUnnamed":"このプラグインは実行中の DSH のバージョンと互換性がありません。実行するとクラッシュやデータ損失が起きるおそれがあります。","reasonIncompatibleInstall":"この DSH と互換性のあるプラグインのバージョンをインストールしてください。","reasonIncompatibleInstalled":"アンインストールしてから、この DSH と互換性のあるバージョンをインストールしてください。","reasonOperationError":"DSH 本体がエラーを報告しました。"},"pluginMarket":{"title":"探す","refresh":"更新","loading":"インデックスを読み込んでいます","retry":"再試行","close":"閉じる","cancel":"キャンセル","emptyTitle":"プラグインマーケットはまだありません","emptyDescription":"プラグインマーケットのインデックスを追加すると、ここでプラグインを見て、インストールできます。","addFirstSource":"インデックスのソースを追加","sourcesFailed":"インデックスのソースを読み込めませんでした。","manageSources":"インデックスのソースを管理…","marketMenu":"プラグインマーケットを切り替え（現在: {market}）","sourcesTitle":"インデックスのソース","sourcesDescription":"プラグインマーケットは、1つのインデックスファイルの URL として公開されます。「探す」では、ここに登録したインデックスを参照します。","sourcesLabel":"追加済みのインデックスのソース","sourceUrl":"インデックスの URL","sourcePlaceholder":"https://example.com/index.json","addSource":"追加","removeSource":"削除","removeSourceNamed":"{url} を削除","sourcesTrust":"インデックスは第三者から提供されます。信頼できるソースだけを追加してください。インストールされたプラグインは、あなたの権限で実行されます。","sourceInvalid":"ユーザー名、パスワード、# フラグメントを含まない http または https のアドレスを使ってください。","sourceDuplicate":"このインデックスのソースは既に追加されています。","sourceUnavailable":"ここではインデックスのソースを保存できません。","sourceFailed":"インデックスのソースを保存できませんでした。","readFailed":"このインデックスを読み込めませんでした。","readInvalid":"このインデックスは有効な形式ではありません。","readChanged":"読み込み中にこのインデックスが変わりました。","search":"プラグインを検索","filter":"ラベル","filterCount":"ラベル · {count}","sortBy":"並び順: {sort}","sortRelevance":"最も一致","sortDefault":"既定の順序","sortPublished":"公開日","switchToAscending":"昇順に並べ替え","switchToDescending":"降順に並べ替え","categoriesLabel":"カテゴリー","allCategories":"すべて","emptyIndex":"このインデックスにはプラグインがありません。","noMatches":"一致するプラグインはありません。","showMore":"さらに表示","entryMeta":"{version} · {date}","entryMetaAuthor":"{version} · {author} · {date}","openEntry":"{name} を表示","install":"インストール","installTitle":"{name} をインストール","installVersionTitle":"{name} {version} をインストール","openInstalled":"インストール済みで {name} を表示","statusInstalled":"インストール済み","statusUpdate":"アップデートがあります","statusProvided":"DSH に同梱","incompatible":"このバージョンは、実行中の DSH {runtime} と互換性がありません。DSH {range} が必要です。","noCompatibleVersion":"DSH {runtime} と互換性のあるバージョンはありません","exempted":"このバージョンは、実行中の DSH と互換性がありませんが、互換性の例外を設定しています。","backToList":"探す","factSource":"ソース","factPackage":"パッケージ","factRegistry":"レジストリ","factRepository":"リポジトリ","factCommit":"コミット","factDirectory":"ディレクトリ","factPublished":"公開日","factAuthor":"作成者","factHomepage":"ホームページ","factSourceCode":"ソースコード","factCategory":"カテゴリー","factLabels":"ラベル","factMarket":"プラグインマーケット","versionsTitle":"バージョン","versionsLabel":"{name} のバージョン","versionDefault":"推奨","versionInstalled":"インストール済み","versionIncompatible":"非互換","versionExempted":"例外設定あり","versionPrerelease":"プレリリース","confirmTitle":"「{name}」をインストールしますか？","installTrust":"プラグインは、あなたの権限でこのマシン上で実行されます。提供元を信頼できるか確かめてください。"},"question":{"error.incomplete":"先にこの質問に回答してください。","error.unanswered":"選択肢を選ぶか、自由回答を入力してください。","error.unavailable":"今は送信できません。しばらくしてから、もう一度お試しください。","error.resubmit":"作業が続行されるまでに回答が届きませんでした。もう一度送信してください。","status.sent":"返信を送信しました。パネルを閉じることはできませんでした。","wait.takeTime":"時間をかける","wait.countdown":"{seconds} 秒後に続行します","wait.paused":"一時停止中・残り {seconds} 秒","wait.held":"回答されるまで待機しています","wait.continued":"作業は続行されました。まだ回答できます","review.status":"回答済み","review.skipped":"この質問はスキップされました。","reply.label":"前の保留中の質問への返信","reply.open":"質問の詳細を開く","reply.close":"質問の詳細を閉じる","reply.answerLabel":"回答: ","reply.skipped":"スキップ済み","nav.prev":"前の質問","nav.next":"次の質問","nav.minimize":"質問カードを折りたたむ","nav.maximize":"質問カードを展開する","nav.cancel":"すべての質問を閉じる","nav.close":"パネルを閉じる。ツール呼び出しから再度開けます","option.recommended":"おすすめ","custom.placeholder":"回答を入力","action.skip":"スキップ","action.next":"次へ","plan.header":"プランのレビュー","plan.approve":"承認","plan.decline":"却下","plan.discuss":"変更を依頼"},"reference":{"section.files":"ファイルとフォルダー","section.subagents":"サブエージェント","section.sessions":"チャット","candidate.noCwd":"（作業ディレクトリなし）","crumb.root":"ワークスペース","fileOpen.title":"ファイルを開けませんでした","fileOpen.failed":"「{path}」を開けませんでした。もう一度試すか、このメッセージを閉じてください。","fileOpen.close":"閉じる","fileOpen.retry":"再試行","time.now":"たった今","time.minutes":"{n}分","time.hours":"{n}時間","time.days":"{n}日","time.months":"{n}か月","time.years":"{n}年"},"schedule.catalog":{"trigger.label":"リマインダー","list.loading":"リマインダーを読み込み中…","list.error":"リマインダーを読み込めませんでした。","list.retry":"再試行","delete.action":"削除","delete.pending":"削除中…","delete.label":"リマインダーを削除: {title}","list.open":"リマインダーの詳細を開く: {title}","trigger.one":"リマインダー {count} 件","trigger.other":"リマインダー {count} 件","list.aria":"有効なリマインダー","list.nextRun":"次回実行","frequency.once":"1回","frequency.every":"{value} {unit}ごと","time.locale":"ja","time.utcPrefix":"UTC","frequency.daily":"毎日 {time}（{timeZone}）","frequency.dailyLocal":"毎日 {time}","frequency.weekly":"毎週 {weekdays} の {time}（{timeZone}）","frequency.weeklyLocal":"毎週 {weekdays} の {time}","frequency.cron":"Cron {expression}（{timeZone}）","frequency.cronLocal":"Cron {expression}","frequency.cronRule":"{rule}（{timeZone}）","cron.list.join":"、","cron.part.join":" ","cron.weekday.name":"{weekday}","cron.weekday.range":"{from}–{to}","cron.months":"（{months}）","cron.day.every":"毎日{months}","cron.day.weekdays":"{weekdays}{months}","cron.day.monthDays":"毎月 {days} 日{months}","cron.day.both":"毎月 {days} 日または {weekdays}{months}","cron.day.bothStarred":"毎月 {days} 日かつ {weekdays}{months}","cron.hours.range":"{from}–{to}","cron.hours.list":"{hours}","cron.time.everyMinute":"毎分","cron.time.everyMinutes":"{step} 分ごと","cron.time.joinedEveryMinute":"毎分","cron.time.joinedEveryMinutes":"{step} 分ごと","cron.time.everyHour":"毎時","cron.time.joinedEveryHour":"毎時","cron.time.everyNHours":"{count} 時間ごと","cron.time.joinedEveryNHours":"{count} 時間ごと","cron.time.hourlyAt":"毎時 {minutes} 分","cron.time.joinedHourlyAt":"毎時 {minutes} 分","cron.time.hoursEveryMinute":"時間 {hours} の間は毎分","cron.time.hoursEveryMinutes":"時間 {hours} の間は {step} 分ごと","cron.time.at":"{times}","cron.time.hoursAt":"時間 {hours} の {minutes} 分","frequency.weekday.join":"、","frequency.weekday.1":"月","frequency.weekday.2":"火","frequency.weekday.3":"水","frequency.weekday.4":"木","frequency.weekday.5":"金","frequency.weekday.6":"土","frequency.weekday.7":"日","unit.day.one":"日","unit.day.other":"日","unit.hour.one":"時間","unit.hour.other":"時間","unit.minute.one":"分","unit.minute.other":"分","unit.second.one":"秒","unit.second.other":"秒","relative.now":"期限到来","relative.future":"{value} {unit}後","relative.overdue":"{value} {unit}超過","mark.aria":"予定されたタスク {count} 件","hover.more":"他 {count} 件"},"schedule.manager":{"panel":"自動化タスク","title":"自動化タスク","new.action":"新規作成","list.label":"タスク一覧","list.nextPrefix":"次回実行予定: ","list.loading":"タスクを読み込み中…","list.error":"タスクを読み込めませんでした。","list.retry":"再試行","list.empty":"タスクはまだありません。セッションで作成したタスクがここに表示されます。","list.emptyInactive":"無効な自動化タスクはありません","list.noMatches":"一致するタスクは見つかりません","search.label":"タスクを検索","search.placeholder":"自動化タスクを検索","search.clear":"検索をクリア","empty.action":"新しい自動化タスク","statusFilter.label":"タスクの状態","statusFilter.all":"すべて","status.active":"有効","status.inactive":"無効","detail.label":"タスクの詳細","detail.close":"詳細を閉じる","detail.more":"自動化タスクの操作","detail.nextRun":"次回実行","detail.tabs":"タスク詳細の表示切り替え","detail.rule":"ルール","detail.records":"記録","delivery.empty":"配信記録がありません","delivery.loading":"配信記録を読み込み中…","delivery.error":"配信記録を読み込めませんでした。","delivery.notFound":"このタスクはもう利用できません。","delivery.cursorError":"記録が更新されました。","delivery.retry":"再試行","delivery.refresh":"更新","delivery.loadMore":"さらに読み込む","delivery.expand":"展開","delivery.collapse":"折りたたむ","delivery.pruned":"それ以前の配信記録は削除されました","delivery.retention":"保持ルール","delivery.retentionBounds":"各タスクは、直近 {days} 日以内の配信記録を最大 {records} 件まで保持します。","delivery.retentionExplanation":"新しい記録が保存されると、これらの上限を超えた古い記録は自動的に削除されます。記録を削除してもタスクは停止しません。","detail.name":"自動化タスク名","detail.instruction":"自動化タスクの指示","detail.status":"状態","detail.next":"次回実行予定","detail.frequency":"頻度","detail.id":"タスク ID","detail.session":"関連セッション","detail.openSession":"関連セッション: 元のセッションを開く","detail.openSessionTitle":"関連セッション {title}: 元のセッションを開く","detail.sessionLoading":"元のセッションの情報を読み込み中です。","detail.sessionArchived":"元のセッションはアーカイブされています。","detail.sessionUnavailable":"元のセッションは利用できません。","detail.missing":"タスクは利用できません。削除された可能性があります。","delivery.label":"保存済みの配信記録","frequency.once":"1回","frequency.every":"{value} {unit} ごと","time.locale":"ja","time.utcPrefix":"UTC","frequency.daily":"毎日 {time}（{timeZone}）","frequency.dailyLocal":"毎日 {time}","frequency.weekly":"毎週 {weekdays} {time}（{timeZone}）","frequency.weeklyLocal":"毎週 {weekdays} {time}","frequency.cron":"Cron {expression}（{timeZone}）","frequency.cronLocal":"Cron {expression}","frequency.cronRule":"{rule}（{timeZone}）","cron.list.join":"、","cron.part.join":" ","cron.weekday.name":"{weekday}","cron.weekday.range":"{from}〜{to}","cron.months":"（対象月: {months}）","cron.day.every":"毎日{months}","cron.day.weekdays":"{weekdays}{months}","cron.day.monthDays":"毎月 {days} 日{months}","cron.day.both":"毎月 {days} 日または{weekdays}{months}","cron.day.bothStarred":"毎月 {days} 日かつ{weekdays}{months}","cron.hours.range":"{from}〜{to}","cron.hours.list":"{hours}","cron.time.everyMinute":"毎分","cron.time.everyMinutes":"{step} 分ごと","cron.time.joinedEveryMinute":"毎分","cron.time.joinedEveryMinutes":"{step} 分ごと","cron.time.everyHour":"毎時","cron.time.joinedEveryHour":"毎時","cron.time.everyNHours":"{count} 時間ごと","cron.time.joinedEveryNHours":"{count} 時間ごと","cron.time.hourlyAt":"毎時 {minutes} 分","cron.time.joinedHourlyAt":"毎時 {minutes} 分","cron.time.hoursEveryMinute":"{hours} 時の間は毎分","cron.time.hoursEveryMinutes":"{hours} 時の間は {step} 分ごと","cron.time.at":"{times}に","cron.time.hoursAt":"{hours} 時の毎時 {minutes} 分","frequency.weekday.join":"、","frequency.weekday.1":"月","frequency.weekday.2":"火","frequency.weekday.3":"水","frequency.weekday.4":"木","frequency.weekday.5":"金","frequency.weekday.6":"土","frequency.weekday.7":"日","unit.day.one":"日","unit.day.other":"日","unit.hour.one":"時間","unit.hour.other":"時間","unit.minute.one":"分","unit.minute.other":"分","unit.second.one":"秒","unit.second.other":"秒","relative.now":"期限到来","relative.future":"あと {value} {unit}","relative.overdue":"{value} {unit} 超過","timing.date":"日付","timing.time":"時刻","timing.hour":"時","timing.minute":"分","timing.second":"秒","timing.prevMonth":"前の月","timing.nextMonth":"次の月","timing.zone":"タイムゾーン","timing.zoneSearch":"UTC オフセット、IANA ID、都市名で検索","timing.zoneNoResults":"一致するタイムゾーンはありません","timing.interval":"繰り返し間隔","timing.intervalIncrease":"間隔を増やす","timing.intervalDecrease":"間隔を減らす","timing.unit.hour":"時間","timing.unit.minute":"分","timing.unit.second":"秒","timing.intervalHint.hour":"1時間以上。間隔はタスクの作成時または最後のルール変更時から数えられ、タイムゾーンには影響されません。","timing.intervalHint.minute":"1分以上。間隔はタスクの作成時または最後のルール変更時から数えられ、タイムゾーンには影響されません。","timing.intervalHint.second":"60秒以上。間隔はタスクの作成時または最後のルール変更時から数えられ、タイムゾーンには影響されません。","timing.zoneNoStored":"1回限りのタスクが保存するのは実行日時だけで、タイムゾーンは保存しません。日付と時刻は選択したタイムゾーンで解釈されます。","timing.inactive":"無効なタスクは読み取り専用です。実行日時は編集できません。","timing.conflict":"編集中にこのタスクが変更されました。下書きは保持されています。キャンセルして、更新後にもう一度開いてから最新のルールを編集してください。","timing.notFound":"このタスクはもう利用できません。下書きは保持されています。エディターを閉じるにはキャンセルしてください。","timing.subagentSession":"このセッションはサブエージェントのものです。配信されるリマインダーは届きません。","timing.invalid":"有効な日付と時刻を入力するか、日時の項目を確認してください。","timing.invalidZone":"有効な IANA タイムゾーンを入力してください（例: Asia/Shanghai）。","timing.notFuture":"未来の日付と時刻を選択してください。","timing.invalidInterval":"1分以上の間隔を入力してください。","timing.invalidInterval.hour":"1時間以上の間隔を入力してください。","timing.invalidInterval.minute":"1分以上の間隔を入力してください。","timing.invalidInterval.second":"60秒以上の間隔を入力してください。","timing.error":"実行日時の更新を確認できませんでした。下書きは保持されています。再試行する前にタスクを確認してください。","rule.title":"実行タイミング","rule.repeat":"繰り返し","rule.weekday":"曜日","rule.weekdayOption":"{weekday}曜日","rule.unsaved":"未保存の変更","rule.save":"変更を保存","rule.saving":"保存中…","rule.cancel":"キャンセル","rule.invalidTitle":"タスク名は120文字以内で入力してください。","rule.invalidPrompt":"タスクの指示を入力してください。","rule.once":"1回","rule.everyMinutes":"N 分ごと","rule.everyHours":"N 時間ごと","rule.everySeconds":"N 秒ごと","rule.daily":"毎日","rule.weekdays":"月曜から金曜","rule.weekly":"毎週","rule.cron":"カスタム","rule.cronLabel":"Cron 式","rule.cronInvalid":"5 フィールドの Cron 式を入力してください（例: 0 9 * * 1-5）。","cronForm.frequency":"頻度","cronForm.monthly":"毎月","cronForm.weekly":"毎週","cronForm.daily":"毎日","cronForm.dates":"日付を指定","cronForm.dateOption":"{day} 日","cronForm.atMinute":"分","cronForm.minuteIncrease":"分を増やす","cronForm.minuteDecrease":"分を減らす","rule.zone.system":"（システム）","rule.error.conflict":"保存前にこのタスクが変更されました。行には保存済みのルールが表示されています。もう一度お試しください。","rule.error.notFound":"このタスクはもう利用できません。","rule.error.unknown":"ルールの更新を確認できませんでした。行には保存済みのルールが表示されています。","delete.action":"タスクを削除","delete.title":"このタスクを削除しますか？","delete.description":"タスクの実行を止め、保存済みの配信記録とあわせて削除します。元のセッションとそのメッセージは残ります。キューに入っているメッセージは取り消されません。","delete.confirm":"削除を確定","delete.cancel":"キャンセル","delete.close":"削除の確認を閉じる","delete.pending":"削除中…","toast.deleted":"タスクを削除しました。","toast.deleteFailed":"タスクを削除できませんでした。","card.open":"開く","card.openLabel":"タスクの詳細を開く: {title}","card.deleted":"削除済み","tool.invoked":"{name} を実行しました"},"secretMask":{"secret.reveal":"シークレットを表示","secret.hide":"シークレットを隠す"},"session-inspector":{"tab.title":"セッションログ","tab.description":"サイドバーで、現在のセッションの生のログとグループ化されたチャットメッセージを分析します。","view.presentation":"表示","view.sessionLog":"生のログ","view.chatNode":"チャットグループ","picker.pick":"チャット表示で要素を選択","picker.cancel":"選択をキャンセル (Esc)","picker.instructions":"メインのチャットにカーソルを合わせるとプレビューされ、クリックで選択します。Esc でキャンセルします。","picker.noMatch":"この表に一致する記録がありません。別の要素を選択するか、Esc でキャンセルしてください。","picker.noChat":"選択する前に、このセッションをメインのチャットで開いてください。","table.id":"インデックス","table.type":"種類","filter.title":"種類で絞り込み","filter.input":"キーワードを入力","filter.placeholder":"断片を入力（例: delta）","filter.help":"部分一致（*キーワード*）。Enter で確定、Esc でキャンセルします。","filter.candidates":"入力候補","filter.loading":"候補を検索中…","filter.failed":"入力候補を読み込めませんでした。","filter.noCandidates":"候補はありません。このキーワードはそのまま適用できます。","filter.clear":"クリア","filter.cancel":"キャンセル","filter.apply":"フィルターを適用","filter.context":"一致した記録の親コンテキスト","table.location":"T/S","table.time":"時刻（UTC）","table.data":"データ","table.older":"以前を読み込む","table.loading":"読み込み中…","table.latest":"最新を追跡","table.empty":"記録はありません","table.raw":"生データ","table.rawError":"この記録はシリアライズできませんでした。別の記録を選択して続行してください。","table.resizeDetails":"生データパネルのサイズを変更","table.close":"閉じる","table.expand":"子を展開","table.collapse":"子を折りたたむ","table.removed":"この記録は削除されたか、確定されました。現在の記録を選択してください。","object.node":"ノード","object.nodeData":"ノードのデータ","object.group":"グループ","object.groupData":"グループのデータ","object.turn":"ターン","object.turnData":"ターンのデータ","object.step":"ステップ","object.stepData":"ステップのデータ","object.accessor":"[ゲッター / セッター。評価していません]","object.empty":"空","object.absent":"[空のスロット]","object.properties":"その他のプロパティ","object.more":"もっと表示","object.navigation":"生データのナビゲーション"},"session-log-download":{"header.more":"その他の操作","menu.download":"セッションログをダウンロード","menu.feedback":"フィードバック","dialog.preparingTitle":"セッションを書き出しています","dialog.preparingDescription":"このセッション、そのサブセッション、添付ファイルを含む ZIP を準備しています。","dialog.successTitle":"セッションのダウンロードを開始しました","dialog.successDescription":"ブラウザでセッションの ZIP をダウンロードしています。","dialog.errorTitle":"セッションの書き出しに失敗しました","dialog.close":"閉じる","dialog.commandFailed":"セッションの書き出しを開始できませんでした。"},"settings":{"trigger":"設定","shortcut.open":"設定を開く","desktop.update.available":"アップデート","desktop.update.checking":"アップデートを確認しています…","desktop.update.progress":"{percent}%","desktop.update.verifying":"アップデートのファイルを検証しています…","desktop.update.installing":"再起動の準備をしています…","desktop.update.ready":"インストールして再起動","desktop.update.retry":"アップデートを再試行","desktop.update.versionDetail":"{label}: {version}","desktop.update.downloadDetail":"アップデートをダウンロード中: {percent}%\n対象バージョン: {version}","desktop.update.checkFailed":"アップデートを確認できませんでした。しばらくしてから再度お試しください。","desktop.update.downloadFailed":"アップデートをダウンロードできませんでした。もう一度お試しください。","desktop.update.installFailed":"アップデートをインストールできませんでした。しばらくしてから再度お試しください。","desktop.update.checkNetworkFailed":"アップデートを確認できませんでした。接続を確かめてから、もう一度お試しください。","desktop.update.downloadNetworkFailed":"アップデートをダウンロードできませんでした。接続を確かめてから、もう一度お試しください。","desktop.update.installNetworkFailed":"アップデートをインストールできませんでした。接続を確かめてから、もう一度お試しください。","desktop.update.stopFailed":"タスクを安全に停止できませんでした。アップデートはインストールされていません。しばらくしてから再度お試しください。","desktop.update.tasksChanged":"新しいタスクが始まりました。もう一度確認すると、タスクを停止してアップデートします。","desktop.update.tasksUnavailable":"タスクの状態を取得できません。ワークスペースの準備ができてから、もう一度アップデートしてください。","title":"設定","close":"閉じる","openDocument":"構成ファイルを開く","openDocument.error":"構成ファイルを開けませんでした","general.nav":"一般","general.currentVersion":"現在のバージョン: {version}","developerTools.title":"コーディング表示を表示","developerTools.error":"保存できませんでした。もう一度お試しください。","developerTools.description":"実行の記録、コードの差分、すべてのエージェントプリセットを表示します","connection.error":"接続が切れました","connection.connecting":"再接続中","connection.connected":"接続済み","connection.reconnect":"接続が切れました。今すぐ再接続","connection.restart":"再接続中。今すぐ再接続","hostRelease.title":"サービスのバージョンが変わりました","hostRelease.description":"サービスのバージョンが変わりました。このページはライブ更新を一時停止しています。新しいバージョンを読み込むには再読み込みしてください。","hostRelease.service":"サービス","hostRelease.page":"ページ","hostRelease.unknown":"不明","hostRelease.reload":"再読み込みして新しいバージョンを読み込む","hostRelease.later":"後で"},"settings.account":{"modelSignInRequired":"モデルを利用できません。サインインしてから、もう一度お試しください。","sessionExpired":"アカウントからサインアウトされました。もう一度サインインしてください。","onboardingArtworkLocale":"en","onboardingWelcome":"ようこそ","onboardingBrand":"DeepSeek Harness","onboardingIntroduction":"DeepSeek Harness はローカルのフォルダで動作し、ツールを使ってお使いのコンピューター上のファイルを読み書きします。情報の調査や整理、ドキュメントや表計算の作成、コードの記述、問題の調査などを手伝えます。","onboardingStart":"始める","onboardingCredit":"クレジットを追加","onboardingCreditDescription":"DeepSeek Harness は、モデルとツールが使ったトークン量に応じてクレジットを消費します。作業を止めずに続けられるよう、あらかじめクレジットを追加しておいてください。残高は、エージェントがタスクを実行している間だけ使われます。","onboardingTopUp":"クレジットを追加","onboardingLater":"次へ","onboardingFundedTopUp":"クレジットを追加","onboardingPurposePrefix":"どんな作業に","onboardingPurposeSuffix":"を使いますか？","onboardingPurposeDescription":"作業の進め方に合わせて、画面とツールを調整します。","onboardingOffice":"オフィス・クリエイティブ作業","onboardingOfficeDescription":"ドキュメントの編集、データの整理、プレゼンテーションの作成などを行います","onboardingDevelopment":"コーディング・開発","onboardingDevelopmentDescription":"コードの編集、問題のデバッグ、コマンドの実行、プロジェクトファイルの管理などを行います","onboardingContinue":"続ける","onboardingProcess":"進行状況の表示の詳しさを選んでください","onboardingProcessDescription":"進行状況の表示方法だけが変わります。DeepSeek Harness でできることは変わりません。","onboardingCompact":"結果のみ","onboardingCompactDescription":"シンプルで見やすい画面で、結果だけを表示します","onboardingStandard":"要点","onboardingStandardDescription":"結果に焦点を当て、重要な手順や操作だけを表示します","onboardingDetailed":"詳細すべて","onboardingDetailedDescription":"原因の調査やトラブルシューティングがしやすいよう、処理の全過程を表示します","onboardingEnter":"アプリを開く","onboardingBack":"戻る","onboardingSkip":"スキップ","onboardingSkipTitle":"セットアップをスキップしますか？","onboardingSkipDescription":"進行状況・パフォーマンス・使用量の表示方法の変更や、コーディングツールの有効化は、いつでも 設定 → 一般 から行えます。","onboardingKeepSetting":"セットアップを続ける","onboardingNoCreditTitle":"クレジットの追加をスキップしますか？","onboardingNoCreditDescription":"クレジットがないと、DeepSeek Harness は新しいタスクを開始できません。後で 設定 → アカウント から追加できます。","onboardingUnderstood":"わかりました","onboardingGoTopUp":"クレジットを追加","onboardingSaveFailed":"設定を保存できませんでした。もう一度お試しください。","onboardingRetry":"再試行","onboardingLoading":"設定を読み込んでいます…","close":"閉じる","addApiKey":"API キーを追加","retry":"再度サインイン","loginTitle":"はじめに","loginDescription":"DeepSeek アカウントでサインインするか、API キーを追加して始めてください。プロジェクトとファイルはローカルに保存されます。","browserTitle":"サインインを待機中","browserPrompt":"ページが自動で開きませんか？ ","copyLink":"サインイン用のリンクをコピー","copiedLink":"リンクをコピーしました","copyFailed":"コピーに失敗しました","browserDescription":"、ブラウザーで開いてサインインを完了してください。","timeoutTitle":"サインインがタイムアウトしました","timeoutDescription":"続けるには、もう一度サインインしてください。","failureTitle":"サインインできませんでした","platformFailed":"操作を完了できませんでした。もう一度お試しください。","platformRetry":"再試行","loading":"読み込み中…","backToHarness":"DeepSeek Harness に戻る","settings":"設定","contactUs":"フィードバック","menu":"アカウントメニュー","nav":"アカウント","signedIn":"DeepSeek にサインイン済み","signedOut":"サインインしていません","signIn":"サインイン","signOut":"サインアウト","signOutUnknownDescription":"実行中のタスクを確認できませんでした。サインアウトすると、このアカウントを使用しているタスクが中断される可能性があります。今すぐサインアウトしますか？","signOutDescription":"サインアウトしてもデータは削除されません。このアカウントには再度サインインできます。","signOutRunningDescription":"タスクが実行中です。サインアウトすると中断されます。今すぐサインアウトしますか？","cancel":"キャンセル","open":"ブラウザーを開く","initializing":"サインインを開始しています…","waiting":"ブラウザーで続けてください","completing":"サインインを完了しています…","expired":"サインインの有効期限が切れました。もう一度お試しください。","failed":"操作を完了できませんでした。もう一度お試しください。","noResponse":"問題が発生しました。ネットワーク接続を確認して、もう一度お試しください。","settingsSignedOutTitle":"DeepSeek Harness にサインインしていません","settingsSignedOutDescription":"DeepSeek Harness にサインインして、専用の API キーを取得してください","signInDescription":"DeepSeek アカウントを使って始めましょう。","profileUnavailable":"アカウントの詳細はまだ取得できません。","balance":"チャージ残高","bonusBalance":"付与された残高","balanceUnavailable":"Platform で確認","balanceSignedOut":"サインインして確認","accountInfo":"アカウントの詳細情報","more":"その他","usage":"使用量を表示","topUp":"チャージ","quotaTitle":"利用できる残高がありません","quotaDescription":"残高がないと、DeepSeek Harness はこのアカウントで新しいタスクを開始できません。今チャージしますか？ 後で 設定 → アカウント からチャージすることもできます。","quotaTopUp":"チャージ","bonusNoticeTitle":"ボーナスが付与されました"},"settings.agentLoop":{"title":"エージェントのループ","description":"エージェントがツール呼び出しを振り分ける方法を制御します。","maxParallel":"並列のツール呼び出し","maxParallelHint":"1 ステップ内で同時に実行される、並列実行可能な呼び出しの上限です。","overridden":"上書き済み","reset":"既定に戻す","readOnly":"この環境では設定が読み取り専用で保存されています。","unavailable":"このプラグインは読み込まれていないため、現在は設定できません。","save":"保存","saving":"保存中…","saveFailed":"環境がこれらの値を受け付けませんでした。修正のため入力内容は残しています。","invalidNumber":"数値を入力してください。空欄のままにすると既定値を使います。"},"settings.agentPreset":{"modeExplanation":"モードの詳細","howToUse":"使い方","guideSections":"ガイドのセクション","guideExampleTask":"使用例のタスク","guideCopy":"コピー","guideCopied":"コピーしました","guideFootnotes":"注釈","guideStandardIntro":"新しいタスクを始める時は Standard モードを選びます。やりたいことを説明し、関連するファイルを示して、結果の確かめ方を伝えてください。","guideStandardExplanation":"### 仕組み\n\nエージェントはツールを直接呼び出して、ファイルの読み書き、検索、ターミナルコマンドの実行を行います。スキル、プランニング、ゴール、サブエージェント、ワークフロー、会話の圧縮に対応しています。\n\n### 選ぶ場面\n\n日常的なコーディング、ファイル作業、調査はここから始めてください。Standard モードでは、スクリプトの作成や、ファイルのバッチ処理もできます。PTC はツール呼び出しの組み立て方が異なるもので、バッチ処理に必須ではありません。","guideStandardUsage":"### バグを直す\n\n> 検索フォームを2回送信すると結果が消える原因を調べてください。直して、関連するテストを実行してください。原因と変更内容を説明してください。\n\n期待される出力: コードの変更、関連するテスト結果、原因の説明。\n\n### プロジェクトのメモを整理する\n\n> このプロジェクトの Markdown のメモを読んでください。合意済みの決定事項と未解決の質問を、元のファイルへのリンク付きでまとめてください。\n\n期待される出力: 元のメモと照合できる参照付きの要約。","guidePtcIntro":"新しいタスクを始める時は PTC モードを選びます。入力ファイル、処理ルール、出力形式を指定してください。コードはエージェントが書きます。","guidePtcExplanation":"### ツールの呼び出し方\n\nPTC は Programmatic Tool Calling の略です。この組み込みプリセットでは、エージェントが run_code を使い、生成された SDK 経由でツールを呼び出す TypeScript のプログラムを書きます。プログラムは、必要に応じてループ、条件分岐、エラー処理、並列呼び出しを使えます。\n\n### モデルに届く内容\n\nツールの結果は、まずプログラムに届き、プログラムがそれを絞り込んだりまとめたりできます。モデルに届くのは、プログラムが出力または返した内容です。画像の結果は別に添付されます。入れ子になったツール呼び出しも記録され、ツールの権限の対象になります。\n\n### Standard モードとの比較\n\n両方のモードで、コーディングとバッチ処理のどちらも扱えます。Standard モードは個々のツールを直接公開し、PTC はツール呼び出しをコードで組み立てます。現在の PTC プリセットでは、ワークフローツールは無効です。速度とトークン使用量は、タスクの内容と、プログラムが結果をどう扱うかによって変わります。","guidePtcUsage":"### 設定ファイル一式を確かめる\n\n> configs/ 内のすべての JSON ファイルを確認してください。schema.json に照らして、必須項目の欠落と不正な値を一覧にしてください。問題1件につき1行の CSV を保存してください。読めないファイルも報告に含め、残りのファイルの確認は続けてください。元のファイルは変更しないでください。\n\n期待される出力: 問題の概要と CSV レポート。プログラムは同じ確認を繰り返し、個々の失敗を処理して結果を集められます。\n\n### エラーログを要約する\n\n> logs/ 内のログファイルを分析してください。エラーをサービスとエラー種別ごとにまとめてください。件数の多い上位10グループと、各グループの例を1つずつ示してください。全件数を CSV に保存してください。\n\n期待される出力: 上位のエラーグループと、件数の完全な表。中間データはプログラム内で集計してから、要約がモデルに届きます。","guideMinimalIntro":"新しいタスクには Minimal モードを選びます。比較する場合は、実行ごとにモデル、権限、入力、開始時のワークスペースの状態を同じに保ってください。","guideMinimalExplanation":"### 含まれるもの\n\n永続的なシェルツールが1つ、read_image、固定のシステムプロンプトです。画像の読み取りには、画像に対応したモデルが必要です。古い履歴は、コンテキストの上限が近づくと自動で圧縮されます。エージェントがアイドル状態の時に /compact を使うと、手動で圧縮できます。組み込みプリセットでは、スキル、プランニング、標準のランタイムのコンテキストは読み込まれません。\n\n### 選ぶ場面\n\n実験や比較の基準として使ってください。シェルコマンドでファイルの読み取りやスクリプトの実行はできますが、長いタスクを管理する組み込みの手段は少なめです。ツールが少ないことが、初心者にとって使いやすさにつながるとは限りません。","guideMinimalUsage":"### 小さなバグ修正で性能を比べる\n\n> このプロジェクトのテストを実行し、失敗の原因を見つけて、最小限の修正をしてください。関連するテストをもう一度実行して、結果を報告してください。\n\n同じ開始状態から、同じタスクを Standard モードと Minimal モードでそれぞれ実行してください。タスクの完了、ツール呼び出し、結果の変更を比べます。Minimal モードでは、作業はすべてターミナルコマンドで行われます。","guideCordisIntro":"新しいタスクには Creator モードを選びます。作りたい機能、表示される場所、確かめ方を説明してください。","guideCordisExplanation":"### 作れるもの\n\nCreator モードには、標準のタスクツールに加えて、ランタイムの検査、永続的なプラグイン管理、Cordis プラグインとエージェントプリセットの作成ガイダンスが含まれます。ツールや UI を追加するプラグイン、または特定の仕事のためにツールとプロンプトを組み合わせたプリセットを作れます。\n\n### プラグインとモード\n\nプラグインは、ツール、サービス接続、UI の項目など、DSH に機能を追加します。モードは、ツールを選び、タスクでエージェントの動き方を定めるエージェントプリセットです。プラグインは、カスタムプリセットに含めることができます。\n\n### 結果が反映される仕組み\n\nソースコードを作らせるだけでなく、インストールして確かめるように指示してください。プラグインは、変更内容によって、すぐ読み込まれる場合と再起動が必要な場合があります。新しく作ったプリセットは、新しいタスクを始めた時に選べます。","guideCordisUsage":"### UI を追加する\n\n> サイドバーにプロジェクトのメモの項目を追加する DSH プラグインを作ってください。このワークスペースの Markdown ファイルを一覧で見られて、選んだメモをプレビューできるようにしてください。インストールして、ページが開くことを確かめてください。\n\n期待される出力: 動作する項目とプレビューページを備えた、インストール済みのプラグインと、残りの有効化の手順。\n\n### ツールを追加する\n\n> このプロジェクトのテストレポートを読み、失敗したテストを要約するツールを持つプラグインを作ってください。登録して、サンプルのレポートで確かめてください。\n\n期待される出力: 呼び出し可能なツールを持つプラグインと、確認済みのサンプル呼び出し。\n\n### 自分用のモードを作る\n\n> Standard モードをもとに「コードレビュー」モードを作ってください。潜在的なバグとテストの抜けを優先して指摘し、ファイルパスと行番号を示し、ファイルを変更する前に確認するようにしてください。選択できるプリセットとして保存してください。\n\n期待される出力: 新しいタスク用のカスタムプリセット。これらのレビュー指示はエージェントの動きを導くもので、実行できる操作は権限の設定が決めます。","builtInGroup":"組み込み","customGroup":"カスタム","sectionIntro":"エージェントのツールと動き方を選びます。日常的なタスクには Standard モード、DSH に機能を追加するには Creator モードを使ってください。","seatHint":"新しいタスクのエージェントプリセットを選択","headerHint":"このタスクの開始時に選ばれたエージェントプリセット","nav":"エージェントプリセット","setDefault":"新しいタスクの既定にする","view":"構成を表示","presetStandardName":"Standard モード","presetStandardDescription":"コード、ファイル、情報を扱います。検索、編集、ターミナルコマンドなどのツールを必要に応じて使えるので、ほとんどのタスクに向いています。","presetPtcName":"PTC モード","presetPtcDescription":"Standard モードの機能をすべて含みます。ツールをまとめて呼び出し、結果を絞り込み、整理し、重複を除き、数え、要約するタスクに向いています。","presetMinimalName":"Minimal モード","presetMinimalDescription":"エージェントはターミナルと画像の読み取り、およびコンテキストの圧縮を使います。基本的な性能のテストや比較に役立ちます。","presetCordisName":"Creator モード","presetCordisDescription":"会話で DSH をカスタマイズします。エージェントに機能や UI を追加するプラグインを書かせたり、ツールとプロンプトを組み合わせて独自のモードを作ったりできます。","inUse":"新しいタスクの既定","noDescription":"説明はありません。","brokenBadge":"読み込みに失敗","switchRefused":"{name} に切り替えられませんでした: {reason}","standardUnavailable":"Standard モードは使えません。復元するか、利用可能な別のモードを選んでください。","close":"閉じる","creatorDraft":"エージェントにプリセットの作成を手伝ってもらう","createPlugin":"エージェントにプラグインを作ってもらう","createPluginDescription":"Creator モードに入って、自分の DSH プラグインを作ります","createPluginChecking":"Creator モードが使えるか確認しています","createPluginUnavailable":"一時的に使えません。このメニューを開き直すと再試行します","createPluginMissing":"この構成には Creator モードが含まれていません"},"settings.locale":{"language.title":"言語"},"settings.models":{"nav":"モデル","deepSeekAccount":"DeepSeek アカウント","title":"モデル","intro":"以下のプロバイダーのモデルを使うには、API キーを入力してください。","edit":"編集","editProvider":"{provider} を編集","remove":"削除","removeProvider":"{provider} を削除","deleteTitle":"{provider} を削除しますか？","deleteDescription":"{provider} を削除すると、その設定が削除されます。使用中の認証情報は別の場所で管理されているため、そのまま残ります。","deleteDescriptionWithCredential":"{provider} を削除すると、その設定と保存済みの API キーが削除されます。","deleteConfirm":"{provider} を削除","deleting":"{provider} を削除しています…","add":"モデルプロバイダーを追加","addMode":"追加方法","addCatalog":"サードパーティのモデルプロバイダー","addCustom":"カスタムモデル API","addCatalogHint":"内蔵カタログから OpenAI、Anthropic、Kimi などのプロバイダーを選び、API キーを入力してください。","addCustomHint":"リレー、セルフホストのサーバー、その他の OpenAI 互換または Anthropic 互換のエンドポイントを、ベース URL、プロトコル、モデルを指定して接続します。","addCatalogExhausted":"カタログのプロバイダーはすべて設定済みです。","addCustomUnavailable":"宣言できる API プロトコルがありません。","provider":"プロバイダー","close":"閉じる","cancel":"キャンセル","apply":"適用","applying":"適用しています…","savedProvider":"{provider} を保存しました。","credentialConfigured":"API キーが設定されています","credentialMissing":"API キーがありません","accountSignedIn":"サインイン済み","readOnly":"この環境では設定ドキュメントは読み取り専用です。","loadFailed":"プロバイダーの一覧を読み込めませんでした","conflict":"このカードを開いている間に、他の人がこの設定を変更しました。いったん閉じてから開き直すと、現在の値を編集できます。","retry":"再試行","keyInput":"API キー","keyReveal":"シークレットを表示","keyHide":"シークレットを隠す","keyPlaceholder":"API キーを入力","keyPlaceholderFallback":"空欄の場合は環境変数を認証に使います（{hint}）","keyPlaceholderSaved":"空欄の場合は保存済みの認証情報を使います","keyFallbackMissing":"環境変数が見つかりません。API キーを入力するか、環境に {hint} を設定してください。","keyFallbackDetected":"環境変数が見つかりました。（{hint}）","keyFallbackDetectedHidden":"環境変数が見つかりました。","keyFallbackUnchecked":"環境変数の認証情報の状態は確認されていません。","keyHelp":"保存済みの認証情報が優先して使われます。ここに示す環境変数の代替は、次の順で確認されます: {env}。確認先は、起動時の環境、$cwd/.env、$DSH_HOME/.env の順です。","authHelp":"認証の詳細","customized":"カスタム設定","baseUrl":"ベース URL","baseUrlDefault":"既定のエンドポイントはありません","baseUrlEnvironment":"プロバイダーのエンドポイント設定: {env}","baseUrlConfigured":"プロバイダーで設定されたエンドポイント","baseUrlPlaceholder":"{url}","deepSeekBaseUrl":"https://api.deepseek.com/anthropic（既定値。DEEPSEEK_BASE_URL で使用）","deepSeekEndpointHint":"Anthropic Messages と互換性のある API エンドポイントを使ってください。","models":"モデル","modelsInherited":"アダプターの既定値を使用しています","modelsCustomized":"カスタムのモデルカタログ","resetModels":"既定値に戻す","model":"モデル","modelId":"モデル ID","modelName":"表示名","modelNamePlaceholder":"空欄の場合はモデル ID を使います","contextWindow":"コンテキストウィンドウ","contextWindowPlaceholder":"プロバイダーの既定値を使います","maxTokens":"最大出力トークン数","maxTokensPlaceholder":"プロバイダーの既定値を使います","modelAdvanced":"モデルのオプション","modelInputTypes":"入力の種類","modelInputText":"テキスト","modelInputImage":"画像","modelReasoning":"思考レベル","modelReasoningLevel":"レベル","modelReasoningValue":"API の値","modelReasoningHelp":"思考レベルについて","modelReasoningHelpText":"API の値は、リクエストの推論強度フィールド（OpenAI の reasoning_effort など）で送られます。既定ではレベル名が使われます。モデルプロバイダーの API ドキュメントで別の値が指定されている場合は、それに従ってください。「オフ」は思考を無効にするもので、値は不要です。設定に既に書かれている値は残され、送信されます。","modelReasoningNeedsLevel":"「オフ」以外のレベルを少なくとも1つ追加するか、思考レベルをオフにしてください。","modelReasoningValueRequired":"「オフ」以外のレベルにはすべて API の値が必要で、空にはできません。","modelReasoningAdd":"レベルを追加","modelReasoningRemove":"レベルを削除","modelReasoningOffValuePlaceholder":"思考をオフにします","addModel":"モデルを追加","removeModel":"モデルを削除","modelsEmpty":"セレクターにはモデルが表示されません。一覧にない ID も直接送信できます。","keyBlank":"API キーを入力するか、保存済みのキーを残す場合は空欄のままにしてください。","keyBlankNew":"API キーを入力するか、このプロバイダーが別の方法で認証する場合は空欄のままにしてください。","keyIllegalCharacters":"この API キーは有効な形式ではありません。確認してください。","modelIdRequired":"モデル ID は必須です。","modelIdDuplicate":"モデル ID は一意である必要があります。","modelNameInvalid":"表示名は空にできません。","modelContextInvalid":"コンテキストウィンドウは正の数で指定してください（例: 131072、256K、1M）。","modelMaxTokensInvalid":"最大出力トークン数は正の数で指定してください（例: 8192、64K、1M）。","advancedHint":"その他の項目は cordis.patch.yml にあります。そのセクションを直接編集してください。","modelCapacityInvalid":"容量は数値で指定してください。末尾に K または M を付けることもできます。","modelDuplicate":"各モデル ID は1回だけ指定できます。","fetchModels":"利用可能なモデルを取得","fetching":"プロバイダーに問い合わせています…","fetchNeedsBaseUrl":"先にベース URL を入力してから取得してください。","fetchEmpty":"プロバイダーからモデルが返されませんでした。手動で追加してください。","fetchTitle":"追加するモデルを選択","fetchDescription":"このプロバイダーが提供しているモデルです。追加するものを選んでください。","fetchSearch":"モデルを検索","fetchNoMatches":"一致するモデルはありません。","fetchSelectAll":"すべて選択","fetchDeselectAll":"すべて選択解除","fetchAdopt":"選択したモデルを追加","customTag":"カスタム","customRoute":"プロバイダー ID","customRouteHint":"小文字で始まる識別子です。リクエストの中で、またこの認証情報名として、このプロバイダーを一意に示します。","customRouteInvalid":"小文字で始めてください。その後は小文字、数字、ハイフンが使えます。","customRouteTaken":"この ID は既にほかのプロバイダーで使われています。","customDisplayName":"表示名","customApi":"API プロトコル","customApiUnset":"未選択","protocolOpenAiCompletions":"OpenAI Chat Completions","protocolOpenAiResponses":"OpenAI Responses","protocolAnthropicMessages":"Anthropic Messages","customNeedsBaseUrl":"カスタムプロバイダーにはベース URL が必要です。","customBaseUrlInvalid":"有効な HTTP または HTTPS の URL を入力してください。","customNeedsModels":"カスタムプロバイダーには、少なくとも1つのモデルが必要です。","customBaseUrlPlaceholder":"https://gateway.example/v1","customAnthropicBaseUrlPlaceholder":"https://gateway.example","settingsPathUnresolvable":"設定ファイルのパスを解決できません","create":"プロバイダーを作成","creating":"作成しています…","welcomeTitle":"プレビューについて","welcomeBody":"DeepSeek Harness 0.2 はまだプレビュー版で、多くの領域にさらなる改善と洗練が必要です。すべての開発者とユーザーからのフィードバックや提案を歓迎します。新しいデスクトップアプリは幅広いユーザーを対象としており、開発者向けの高度な機能は設定で有効にできます。DeepSeek Harness の製品機能とプラグイン API は、今後も急速に改良が続き、時間をかけて徐々に安定していく予定です。\n\n世界中のユーザーや開発者とともに、オープンソースで再利用可能かつ組み合わせ可能な基盤の上に、知能の限界を探っていけることを楽しみにしています。誰もが DeepSeek Harness でアイデアを形にし、コミュニティに参加してプラグインのエコシステムを豊かにしていただくことを歓迎します。","welcomeContinue":"続ける","welcomeError":"確認応答を保存できませんでした。もう一度お試しください。","onboardingTitle":"始めるには API キーを追加してください","onboardingDescription":"開発を始めるには、公式の DeepSeek プロバイダーを設定してください。","onboardingLater":"後で設定","onboardingSave":"保存して続ける","onboardingSaving":"保存しています…","keyRequired":"続けるには API キーを入力してください。"},"settings.permission":{"title":"権限","description":"新しいセッションの既定の権限モードを選択します","loading":"読み込み中","unavailable":"利用できません","preset.readOnly":"読み取り専用","preset.workspaceWrite":"ファイルへの書き込み","preset.fullAccess":"フルアクセス","confirm.title":"フルアクセスを有効にしますか？","confirm.description":"フルアクセスを有効にすると、新しいセッションは確認の手順を減らし、機密性の高い操作、ファイルの変更、外部コマンドを含む多くの操作を直接実行できます。後続のタスクを信頼できる場合にのみ使用してください。","confirm.acknowledge":"リスクを理解したうえで続行します","confirm.cancel":"キャンセル","confirm.enable":"フルアクセスを有効にする"},"settings.pluginInventory":{"tab":"プラグイン一覧","loading":"プラグインを読み取り中…","clientSyncing":"このページのプラグインを同期中…","clientSyncFailed":"このページでは一部のプラグインを同期できませんでした。ホストでの有効化状態は変わっていません。","clientSyncRetry":"このページを再試行","error":"プラグインは一時的に利用できません。","metadataError":"パッケージのメタデータエラー: {error}","retry":"再試行","search":"プラグインを検索","empty":"利用できるプラグインはありません。","emptySearch":"一致するプラグインはありません。","presetTitle":"セッションのプラグイン","presetSubtitle":"エージェントプリセットによってセッションごとに構成されます","switcherLabel":"確認するエージェントプリセットを選択","presetOptionDefault":"{name}（既定）","presetOptionBroken":"{name}（読み込みに失敗）","globalTitle":"グローバルプラグイン","globalSubtitle":"システムとすべてのセッションで共有","presetProvidedDetail":"グローバルでは無効です。エージェントプリセットがセッションごとに提供します","enabledIn":"有効な場所","matchesInOtherPresets":"他のプリセットでさらに {count} 件一致: ","enabledTag":"有効","disabledTag":"無効","conditionalTag":"条件付き","presetEnabledTag":"プリセット経由","failedTag":"失敗","moduleLabel":"モジュール","fromPreset":"提供元","condition":"無効になる条件","configuration":"設定","runtime":"状態","unobserved":"実行されていません","pending":"依存関係の完了を待機中","loadingPhase":"読み込み中","active":"実行中","failed":"起動に失敗しました","unloading":"アンロード中"},"settings.plugins":{"nav":"内蔵プラグイン","title":"内蔵プラグイン","intro":"この環境に同梱されているプラグインを確認します。","tabs":"プラグインの表示","empty":"この環境にはプラグインの表示はありません。"},"settings.sessionLog":{"title":"公式モデル API を使用する際にセッションログをアップロードする","description":"DeepSeek のモデルと製品の改善に役立てます。","saved":"設定を保存しました","failed":"設定を保存できませんでした"},"settings.shell":{"title":"シェル","description":"各コマンドの実行時間と出力量の上限を設定します。","timeoutMs":"コマンドのタイムアウト（ms）","timeoutMsHint":"1 つのコマンドが実行できる時間です。超えると終了されます。","maxOutputBytes":"ストリームごとの出力上限（バイト）","maxOutputBytesHint":"この上限を超えた出力は失われず、一時ファイルに書き出されます。","overridden":"上書き済み","reset":"既定値に戻す","readOnly":"この環境では、設定は読み取り専用で保存されています。","unavailable":"このプラグインは読み込まれていないため、現在は設定できません。","save":"保存","saving":"保存中…","saveFailed":"この環境ではこれらの値を受け付けませんでした。修正できるよう入力はそのまま残しています。","invalidNumber":"数値を入力するか、空欄にすると既定値を使います。"},"settings.subagent":{"overridden":"上書き済み","reset":"既定に戻す","readOnly":"この環境では設定が読み取り専用で保存されています。","unavailable":"このプラグインは読み込まれていないため、現在は設定できません。","save":"保存","saving":"保存中…","saveFailed":"環境がこれらの値を受け付けませんでした。修正のため入力内容は残しています。","subagentTitle":"サブエージェント","subagentDescription":"サブエージェントの再帰の深さ、数、モデルを設定します。","subagentLimitsTitle":"上限","subagentMaxDepth":"最大の再帰の深さ","subagentDepthHelpLabel":"最大の再帰の深さについて","subagentDepthHelp":"エージェントが作成できるサブエージェントの階層の数を制限します。","subagentDepthZero":"サブエージェントを無効にする","subagentDepthOne":"メインのエージェントのみサブエージェントを作成できます","subagentDepthOverride":"ツールが独自の最大の再帰の深さを定義している場合は、そちらの設定が優先されます。","subagentMaxActive":"サブエージェントの並列数の上限","subagentCapacityHelpLabel":"サブエージェントの並列数の上限について","subagentCapacityHelp":"同じメインのエージェントの配下で動作しているサブエージェントの合計数です（すべての再帰の階層を含み、メインのエージェントは除きます）。上限に達すると、新しい開始要求は拒否されます。","subagentDepthInvalid":"0 以上の整数を入力してください。","subagentCapacityInvalid":"1 以上の整数を入力してください。","subagentModelSelectionTitle":"モデルの選択","subagentModelSelectionToggle":"エージェントがサブエージェント用のモデルを選択できるようにする","subagentModelSelectionChoose":"有効にすると、エージェントは下記の許可されたモデルの中から、サブエージェントごとにプロバイダー、モデル、思考の強度を選択できます。新しいセッションにのみ適用されます。","subagentModelSelectionAllowed":"エージェントが選択できるモデル","subagentModelSelectionLoading":"モデルを読み込み中…","subagentModelSelectionLoadFailed":"モデルを読み込めませんでした。","subagentModelSelectionRetry":"再試行","subagentModelSelectionPartial":"一部のモデルプロバイダーを読み込めませんでした。保存済みの選択は削除できます。","subagentModelSelectionUnavailable":"現在利用できません","subagentModelSelectionUnavailableGroup":"保存済みですが現在利用できません","subagentModelSelectionEmpty":"現在モデルを提供しているプロバイダーはありません。","subagentModelSelectionRequired":"保存する前に、モデルを 1 つ以上選択してください。","subagentModelSelectionConflict":"設定が別の場所で変更されました。下書きを破棄してから、もう一度お試しください。","subagentModelSelectionOff":"サブエージェントは設定済みの既定値を使うか、親エージェントのモデルを引き継ぎます。保存済みのモデルの選択は保持されます。"},"settings.theme":{"appearance.title":"外観","appearance.light":"ライト","appearance.dark":"ダーク","appearance.system":"システム","fontSize.text.title":"文字サイズ","fontSize.text.description":"会話の内容にのみ適用されます","fontSize.text.increase":"文字サイズを大きくする","fontSize.text.decrease":"文字サイズを小さくする","fontSize.code.title":"コードの文字サイズ","fontSize.code.description":"コードブロック、インラインコード、ツールの出力に使われます","fontSize.code.increase":"コードの文字サイズを大きくする","fontSize.code.decrease":"コードの文字サイズを小さくする","fontSize.terminal.title":"ターミナルの文字サイズ","fontSize.terminal.description":"サイドバーのターミナルに使われます","fontSize.terminal.increase":"ターミナルの文字サイズを大きくする","fontSize.terminal.decrease":"ターミナルの文字サイズを小さくする","fontSize.unit":"px","fontFamily.text.title":"テキストのフォント","fontFamily.text.description":"インターフェースと会話のテキストに使われます。フォントはカンマで区切ります。空欄にすると既定のフォントになります","fontFamily.code.title":"コードのフォント","fontFamily.code.description":"コードブロック、インラインコード、ツールの出力に使われます。フォントはカンマで区切ります。空欄にすると既定のフォントになります","fontFamily.terminal.title":"ターミナルのフォント","fontFamily.terminal.description":"サイドバーのターミナルに使われます。フォントはカンマで区切ります。空欄にすると既定のフォントになります","fontFamily.placeholder":"既定","fontSize.more":"その他のフォント設定"},"settings.webSearch":{"title":"Web 検索","description":"DeepSeek の検索プロバイダーを設定します。","useSearchApi":"新しい Web Search API を使う","useSearchApiHint":"既定ではオフです。検索は DeepSeek Messages 経由で実行されます。新しい Web Search API の機能と料金については、","searchGuide":"検索と取得のガイド","searchGuideUrl":"https://api-docs.deepseek.com/guides/search","apiKey":"API キー","apiKeyHint":"設定ファイルの外に保存されます。空欄のままにすると、現在のキーを維持します。","apiKeySet":"キーが設定されています。","apiKeyUnset":"キーが設定されていません。DeepSeek アカウントのモデルを使う会話だけが、既定のエンドポイント経由で検索できます。","baseUrl":"Messages API のベース URL","baseUrlHint":"https://api.deepseek.com/anthropic/v1 のように API のプレフィックスを含めてください。プロバイダーは /messages を追加します。空欄にすると既定値に戻ります。","searchApiBaseUrl":"Search / Fetch API のベース URL","searchApiBaseUrlHint":"https://api.deepseek.com/v1/tools のように API のプレフィックスを含めてください。プロバイダーは /search または /fetch を追加します。空欄にすると既定値に戻ります。","maxUses":"検索回数の上限（1 リクエストあたり）","maxUsesHint":"1 回の Messages リクエスト内で補助モデルが実行できる検索の回数です。Messages API にのみ適用されます。","count":"検索ごとの結果数","countHint":"クエリごとに返される結果数。1〜50 の整数で、既定値は 10 です。検索回数ではなく、結果の件数を制御します。web_search は、自身の結果上限を超えるソースは保持しません。","overridden":"上書き済み","reset":"既定値に戻す","readOnly":"この環境では設定は読み取り専用で保存されます。","unavailable":"このプラグインは読み込まれていないため、現在は設定できません。","save":"保存","saving":"保存中…","saveFailed":"環境がこれらの値を受け付けませんでした。修正のため入力内容はそのままにしてあります。","invalidNumber":"数値を入力するか、空欄にして既定値を使ってください。","invalidCount":"1〜50 の整数を入力するか、空欄にして既定値を使ってください。"},"shortcuts":{"edit-label":"{command} のショートカットを編集","record":"ショートカットを押してください","record-help":"キーを離すと保存されます。Tab で操作を移動、Esc でキャンセルします。","web-help":"ブラウザの組み合わせ: Mod+/、Mod+Shift+,、Mod+Shift+.。Mod は Mac では Command、それ以外では Ctrl です。","unsupported-key":"このキーはサポートされていません。","reserved":"この組み合わせはシステムまたはテキスト編集の操作用に予約されています。","modifier-required":"Command、Ctrl、Alt のいずれかを含めてください。","too-many-keys":"修飾キー以外は最大 2 つまでです。キーを離してから、もう一度お試しください。","macos-web-help":"Command+/、Command+,、Command+Backslash、Control+Backquote、Command+Option+キー、または Command+Shift+キーを使用してください。修飾キーが 3 つまたは 4 つ異なる組み合わせにも対応しています。ブラウザやシステムのショートカットはページに届かない場合があります。","windows-web-help":"Ctrl+/、Ctrl+,、Ctrl+Alt+キー、または Ctrl+Shift+キーを使用してください。修飾キーが 3 つまたは 4 つ異なる組み合わせにも対応しています。ブラウザやシステムのショートカットはページに届かない場合があります。","unsupported-browser":"このブラウザでは、この組み合わせにはまだ対応していません。","conflict":"「{commands}」ですでに使用されています","saved":"変更済み","clear":"削除","retry-save":"保存を再試行","reset":"初期値に戻す","reset-all":"すべて初期値に戻す","modified-count":"{count} 件をカスタマイズ済み","reset-title":"すべてのショートカットを初期値に戻しますか？","reset-description":"このプラットフォームの既定のショートカットに戻します。変更または削除されたショートカットはすべて戻ります。他のプラットフォームには影響しません。","cancel":"キャンセル","reset-saved":"既定のショートカットに戻しました","close-confirmation":"確認を閉じる","reset-failed":"初期値に戻せませんでした。ショートカットは変更されていません。もう一度お試しください。","review":"最新の設定を確認しました","stale":"ショートカットの設定または利用できるコマンドが変更されました。保存する前に最新の割り当てを確認してください。","write-failed":"保存できませんでした。以前のショートカットと現在の下書きは保持されています。もう一度お試しください。","not-ready":"ショートカットの準備ができていません。もう一度お試しください。","read":"{location} を読み込めませんでした。アクセス権限を確認してから、{reload}してください。","invalid":"{location} のショートカット設定が壊れています。この設定をバックアップして修復してから、{reload}してください。","future":"{location} のショートカット設定は新しいバージョンで作成されています。Harness をアップグレードして、もう一度お試しください。","web-document":"このサイトの localStorage エントリ dsh.keybindings.v1","desktop-document":"userData/keybindings.json","web-reload":"ページを再読み込み","desktop-reload":"Harness を再起動","using-defaults":"既定の割り当てを使用中です。","using-accepted":"最後に正常に読み込んだ割り当てが引き続き有効です。","native-failed":"デスクトップのキー記録を保護できませんでした。記録を終了してから、もう一度お試しください。","global-hint":"どこからでも開けます","clear-search":"検索をクリア","title":"キーボードショートカット","open":"キーボードショートカットを開く","settings":"キーボードショートカット","view":"ショートカットを編集","description":"利用できるショートカットと入力操作を確認・編集します","search":"ショートカットを検索","close":"キーボードショートカットを閉じる","application":"アプリケーション","input":"メッセージ入力","menus":"メニューとダイアログ","approval":"承認エリア","unbound":"ショートカットなし","empty":"一致するショートカットはありません","move":"メニューの選択を移動","select":"メニュー項目を選択","dismiss":"メニューまたは最前面のダイアログを閉じる"},"shortcuts.layout":{"toggle":"左サイドバーを切り替え"},"sidebar":{"session.new":"新しいチャット","session.new.label":"新しいチャット","toggle.open":"サイドバーを開く","toggle.collapse":"サイドバーを閉じる","panels.label":"全体パネル","panels.more":"その他"},"sidebarBrowser":{"type.label":"ブラウザ","guide.title":"ブラウザ","guide.description":"Web ページを閲覧します","shortcut.noSession":"先にセッションを開いてください","address.placeholder":"HTTP(S) のアドレスを入力","address.changed":"URL が変更されました","back":"戻る","forward":"進む","reload":"再読み込み","go":"移動","external":"システムのブラウザで開く","sandbox.disable":"サンドボックスの制限を無効にする","sandbox.enable":"サンドボックスの制限を元に戻す","sandbox.warning":"サンドボックスの制限が無効になっています。ページは最上位のアプリを移動したり、ダウンロード、モーダルダイアログ、入力のロックを使ったりできます。","start":"HTTP(S) のアドレスを入力すると閲覧を開始します","loading":"開いています…","restore.previous":"以前開いていたページ","restore.action":"ページを復元","error.empty":"アドレスを入力してください。","error.invalid":"アドレスが無効か、長すぎます。","error.protocol":"HTTP と HTTPS のアドレスのみ対応しています。ローカルファイルは「ドキュメントプレビュー」を使ってください。","error.credentials":"アドレスにユーザー名やパスワードを含めることはできません。","error.application-origin":"内蔵ブラウザでは DSH アプリケーション自体は開けません。","load.failed":"ページを読み込めませんでした。再読み込みするか、システムのブラウザで開いてください。","load.failed.detail":"ページの読み込みに失敗しました（{code}）: {description}","address.unknown":"ページが移動しましたが、この環境では新しい URL を読み取れません。"},"sidebarCodePreview":{"title":"コード","copy":"コピー","copied":"コピーしました"},"sidebarDocumentPreview":{"loading":"ドキュメントを描画しています...","loadMore":"さらに読み込む","changed":"ファイルが変更されたため、前の内容を表示しています。","reloadNow":"再読み込み","reload":"ファイルを再度読み込む","autoRefresh":"自動更新","autoRefresh.enable":"自動更新を有効にする","autoRefresh.disable":"自動更新を無効にする","wrap.enable":"行の折り返しをオンにする","wrap.disable":"行の折り返しをオフにする","wrap.aria":"行の折り返し","openWith":"開くアプリ","viewer.text":"プレーンテキスト","resourceUnavailable":"ファイルリソースのサービスは利用できません。","rendererUnavailable":"{name} のプレビューは利用できません。","unsupportedFile":"このファイル形式のプレビューは、まだ利用できません。","error.notFound":"ファイルが見つかりません。移動または削除された可能性があります。","error.tooLarge":"このページは {limit} の上限を超えているため、読み込めません。","error.notText":"このファイル形式のプレビューは、まだ利用できません。","error.notRegularFile":"通常のファイルではないため、表示するものがありません。","error.unavailable":"読み込みに失敗しました: {message}","retry":"再試行"},"sidebarExcel":{"title":"スプレッドシート","language":"en","loading":"ドキュメントを描画しています…","invalid":"このスプレッドシートを開けませんでした。形式、内容、パスワード保護を確認してください。","tooLarge":"このブックはプレビューのサイズ上限を超えています。","timeout":"このブックを開く処理がタイムアウトしました。小さいファイルでお試しください。","encoding":"このテキストのエンコーディングを読み取れませんでした。ファイルを BOM 付きの UTF-8 または UTF-16 で保存してから、もう一度お試しください。","formulaWarning":"このブックには数式が含まれています。表示される結果が欠けている、または不正確な場合があります。","unsupportedNotice":"このプレビューは、このブックの {features} には対応していません。すべての機能を利用するには、システムのアプリで開いてください。","charts":"グラフ","images":"画像","shapes":"図形","conditionalFormatting":"条件付き書式","featureSeparator":"、","retry":"再試行"},"sidebarFiles":{"shortcut.noSession":"先にセッションを選択してください","type.label":"ファイル","guide.title":"ワークスペースのファイル","guide.description":"このセッションのワークスペース内のファイルを参照します","loading":"読み込んでいます…","empty":"空のディレクトリです","truncated":"項目が多すぎるため、一部のみ表示しています。","noWorkspace":"このセッションにはワークスペースのディレクトリがありません。","reload":"再読み込み","autoRefresh":"自動更新","autoRefresh.enable":"自動更新を有効にする","autoRefresh.disable":"自動更新を無効にする","entry.other":"ファイルでもディレクトリでもないため、開けません。","error.notFound":"このディレクトリはありません。移動されたか、削除された可能性があります。","error.outsideWorkspace":"このディレクトリはワークスペースの外にあるため、サイドバーでは読み込みません。","error.notDirectory":"ディレクトリではありません。","error.unavailable":"読み込みに失敗しました: {message}"},"sidebarImage":{"zoomControls":"ズーム操作","zoomMenu":"ズームを選択","zoomOut":"縮小","zoomIn":"拡大","zoomFitWidth":"幅に合わせる","zoomValue":"{percent}%","title":"画像","preview":"画像のプレビュー: {name}","loading":"ドキュメントを描画しています...","failed":"この画像を表示できませんでした。","unsupported":"画像のプレビューには、ファイルの全内容が必要です。"},"sidebarOffice":{"title":"Office 文書","loading":"文書を描画しています...","retry":"再試行","viewMissingFonts":"不足しているフォント: {count} 件。クリックして表示します。","missingFontsTitle":"不足しているフォント","missingFontsDescription":"このプレビューでは次のフォントを利用できません。文字やレイアウトが元の文書と異なる場合があります。","missingFontsCount":"フォント: {count}","closeDetails":"フォントの詳細を閉じる","unavailable":"Office のプレビューは利用できません。DeepSeek Harness を実行しているコンピューターで、文書プレビューサービスを有効にしてください。","invalid":"この Office ファイルはプレビューできません。破損しているか、パスワードで保護されているか、拡張子が正しくない可能性があります。","tooLarge":"Office ファイルまたは変換後の PDF がプレビューのサイズ上限を超えています。ファイルサイズを小さくするか、プレビューの設定を変更してください。","failed":"Office の変換で、利用できる PDF が生成されませんでした。ファイルを確認して、もう一度お試しください。","timeout":"Office の変換がタイムアウトしました。もう一度お試しください。","busy":"Office のプレビューは処理中です。しばらくしてから、もう一度お試しください。","changed":"読み取り中にファイルが変更されました。プレビューを開き直してください。"},"sidebarPdf":{"zoomControls":"ズーム操作","zoomMenu":"ズームを選択","zoomOut":"縮小","zoomIn":"拡大","zoomFitWidth":"幅に合わせる","zoomValue":"{percent}%","title":"PDF","pageImage":"PDF の {page} ページ目","loading":"ドキュメントを描画中...","rendering":"ページを描画中…","failed":"PDF を表示できません: {message}","password":"この PDF はパスワードが必要です。パスワード保護されたプレビューには対応していません。","workerFailed":"PDF の描画処理を続行できませんでした。もう一度お試しください。","unsupported":"PDF のプレビューには、ファイルの全内容が必要です。","retry":"再試行"},"sidebarRight":{"command.close":"現在のページまたはウィンドウを閉じる","command.refresh":"現在のページを更新","command.noRefresh":"このページは更新できません","command.toggle":"右サイドバーを切り替え","command.fullscreen":"パネルの全画面表示を切り替え","command.noSession":"先にセッションを選択してください","command.noFocus":"先に右サイドバーのペインにフォーカスしてください","command.stale":"ページが変わりました。もう一度フォーカスしてください","command.collapsed":"先に右サイドバーを展開してください","command.float":"この操作はフローティングパネルでは利用できません","command.empty":"先にページを開いてください","command.budget":"ペインは2つまでです","command.width":"分割するには幅が足りません。サイドバーを広げてください","chrome.expand":"サイドバーを開く","chrome.expandAria":"右サイドバーを開く","chrome.collapse":"サイドバーを閉じる","chrome.collapseAria":"右サイドバーを閉じる","chrome.toFullscreen":"全画面表示","chrome.exitFullscreen":"全画面表示を終了","dock.emptyPane":"空のペイン","dock.splitPane":"分割","dock.splitPaneDisabled":"ペインは2つまでです","dock.splitPaneNarrow":"分割するには幅が足りません。サイドバーを広げてください","dock.closeTab":"閉じる","dock.addTab":"新しいタブ","dock.dockFloat":"サイドバーに戻す","dock.closeFloat":"閉じる","dock.drop.center":"ここに移動","dock.drop.left":"左に分割を追加","dock.drop.right":"右に分割を追加","dock.drop.top":"上に分割を追加","dock.drop.bottom":"下に分割を追加","tab.guide.title":"開始","tab.guide.more":"その他のツール","tab.unavailable":"この種類のコンテンツを表示できるものはまだありません。"},"sidebarTerminal":{"shortcut.noSession":"先にセッションを選択してください","recoveryFailed":"ターミナルの復旧に失敗しました: {message}","retryRecovery":"ターミナルの復旧を再試行","shell":"シェルを選択","shellLoading":"シェルを読み込んでいます…","shellEmpty":"利用できるシェルがありません","description":"セッションのワークスペースでコマンドを実行します","title":"ターミナル","new":"新しいターミナル","loading":"ターミナル環境を読み込んでいます…","creating":"開始しています…","connecting":"接続しています…","disconnected":"接続が切れました。","reconnect":"再接続","readonly":"この表示は読み取り専用です。","control":"操作を引き継ぐ","closed":"ターミナルを閉じました。","exited":"プロセスが終了しました ({code})","failed":"ターミナルエラー: {message}","rename":"ターミナル名","unavailable":"利用できません","retry":"再試行","cleanupFailed":"ターミナル「{title}」を終了できませんでした: {message}","missingTerminal":"このターミナルは存在しません。新しいターミナルを開いてください。","inputFull":"入力バッファがいっぱいです。再接続してからもう一度お試しください。","attachmentEnded":"ターミナルの接続が終了しました。続行するには再接続してください。","invalidOutput":"ターミナルの画面を受信できませんでした。復旧するには再接続してください。","terminalLimit":"ターミナルの上限に達しました。使っていないターミナルを閉じてから、もう一度お試しください。終了したターミナルも上限に含まれます。"},"skill":{"row.title":"スキル","row.running":"スキルを読み込み中","row.preparing":"スキルの読み込みを準備中","row.failed":"スキルの読み込みに失敗しました","row.stopped":"スキルの読み込みを停止しました","row.instructions":"指示","row.inspect":"確認","menu.userOnly":"ユーザーのみ"},"slash.menu":{"command":"コマンド","skill":"スキル","subagent":"サブエージェント","loading":"読み込み中…","drill.aria":"フォルダーを表示","drill.hint":"フォルダーを表示","drill.key":"Tab","crumbs.aria":"フォルダーの移動","suggestions.aria":"トリガーの候補"},"subagent":{"duration.seconds":"{seconds}秒","duration.minutes":"{minutes}分 {seconds}秒","duration.hours":"{hours}時間 {minutes}分 {seconds}秒","duration.days":"{days}日","duration.daysHours":"{days}日 {hours}時間","duration.months":"約{months}か月","duration.monthsDays":"約{months}か月 {days}日","duration.years":"約{years}年","duration.yearsMonths":"約{years}年 {months}か月","duration.exactDays":"{days}日 {hours}時間 {minutes}分 {seconds}秒","duration.exactTitle":"合計の稼働時間: {duration}","tokens.thousand":"{value}K","tokens.million":"{value}M","tokens.total":"{value} トークン","loading.label":"サブエージェントを読み込んでいます…","load.error":"サブエージェントを読み込めません","catalog.migrationRequired":"移行が必要です","retry":"再試行","mode.external":"外部タスク","mode.oneShot":"単発","mode.continuable":"継続可能","mode.unknown":"モード不明","readonly.unknown.body":"子セッションを確認して、続行できるかどうかを判断してください。","activity.running":"実行中","activity.completed":"完了","activity.inactive":"停止中","branch.collapse":"{label} の配下を折りたたむ","branch.expand":"{label} の配下を展開","count.total.one":"{count} 件のサブエージェント","count.total.other":"{count} 件のサブエージェント","count.running.one":"{count} 件のサブエージェントが実行中","count.running.other":"{count} 件のサブエージェントが実行中","switcher.aria":"サブエージェントを切り替え: {title}","tree.aria":"サブエージェントのセッション","open.sidebar":"サイドバーで開く","open.sidebar.aria":"{label} をサイドバーで開く","sidebar.chat":"チャット","readonly.oneShot.title":"単発サブエージェントの記録","readonly.title":"このサブエージェントは現在、読み取り専用です","readonly.oneShot.body":"単発のタスクでは追加の指示を受け付けません。ここで実行の記録全体を確認できます。","readonly.body":"親セッションがオフラインです。メッセージを送るには、親セッションを開き直してください。"},"trajectory":{"view.trajectory":"実行の記録","toolbar.aria":"実行の記録のツールバー","toolbar.duration":"所要時間","toolbar.useActualDuration":"実際の所要時間を使う","toolbar.useEqualWidth":"操作の幅を揃える","toolbar.actualTime":"実時間","toolbar.turns":"ターン","toolbar.expandTurns":"ターンを展開","toolbar.collapseTurns":"ターンを折りたたむ","toolbar.calls":"呼び出し","toolbar.expandCalls":"呼び出しを展開","toolbar.collapseCalls":"呼び出しを折りたたむ","toolbar.search":"実行の記録を検索","toolbar.searchPlaceholder":"検索","kind.system":"システム","kind.user":"ユーザー","kind.context":"コンテキスト","kind.compacted":"圧縮済み","kind.message":"メッセージ","kind.assistant":"アシスタント","kind.tool":"ツール","kind.subtool":"サブツール","kind.sub":"サブ","column.input":"入力","column.output":"出力","column.think":"思考","column.time":"時間","column.model":"モデル","column.tools":"ツール","turn.label":"ターン {turn}","section.betweenTurns":"ターン間","group.message":"メッセージ","group.step":"ステップ {step}","group.compaction":"圧縮 {seq}","status.failed":"失敗","status.pending":"保留中","status.completed":"完了","timing.notAvailable":"利用できません","timing.notRecorded":"記録されていません","timing.stepStartUnavailable":"ステップの開始時刻は利用できません","timing.firstTokenUnavailable":"最初のトークンの時刻は利用できません","timing.usageUnavailable":"使用量は利用できません","timing.outputTokensUnavailable":"出力トークン数は利用できません","timing.durationTooShort":"所要時間が短すぎます","timing.showLocalTime":"ローカル時刻を表示","timing.showUnixTimestamp":"Unix タイムスタンプを表示","timing.started":"開始","timing.totalDuration":"合計所要時間","timing.ttft":"TTFT","timing.generation":"生成","timing.throughput":"スループット","timing.duration":"所要時間","timing.source":"タイミングのソース","timing.sessionTimestamps":"セッションのタイムスタンプ","timing.sessionTimestampsRunning":"セッションのタイムスタンプ（実行中）","timing.request":"リクエストのタイミング","unit.milliseconds":"{value} ms","unit.seconds":"{value} 秒","unit.tokens":"{value} トークン","unit.tokensPerSecond":"{value} tok/s","usage.tokens":"トークン","usage.reasoning":"思考","usage.content":"内容","usage.notReported":"使用量は報告されていません","usage.input":"入力","usage.cached":"キャッシュ済み","usage.cacheCreated":"キャッシュ作成","usage.other":"その他","usage.output":"出力","usage.thisRequest":"今回のリクエスト","usage.sessionCumulative":"セッション累計","options.notRecorded":"オプションは記録されていません","options.json":"リクエストオプションの JSON","source.unknown":"不明","source.user":"ユーザー","source.plugin":"プラグイン","source.pluginNamed":"プラグイン · {plugin}","source.goal":"ゴール","source.goalRound":"ゴール · ラウンド {round}","source.notRecorded":"ソースは記録されていません","source.messageJson":"メッセージのソース JSON","tab.summary":"要約","tab.rawOutput":"生の出力","tab.preview":"プレビュー","tab.raw":"生","tab.source":"ソース","tab.payload":"ペイロード","tab.result":"結果","tab.schema":"スキーマ","tab.timing":"タイミング","tab.diff":"差分","tab.systemPrompt":"システムプロンプト","tab.tools":"ツール","tab.options":"オプション","tab.usage":"使用量","record.toolCallOnly":"（ツール呼び出しのみ）","record.noContent":"内容がありません","record.noPayload":"ペイロードは取得されていません","record.noResult":"結果は取得されていません","record.noOutput":"出力がありません","record.schemaUnavailable":"スキーマは利用できません","record.parameters":"パラメーター","record.resultJson":"結果の JSON","record.json":"JSON","record.parametersJson":"パラメーターの JSON","record.namedParametersJson":"{name} のパラメーターの JSON","record.payloadJson":"ペイロードの JSON","record.outputJson":"結果の JSON","record.thinking":"思考","record.wrapLines":"折り返す","code.source":"コード","code.output":"出力","code.copySource":"コードをコピー","code.copyOutput":"出力をコピー","code.originalJson":"元の JSON","code.running":"実行中…","record.systemPromptMissing":"このリクエストにはシステムプロンプトがありません","record.toolsMissing":"このリクエストにはツールがありません","record.systemPrompt":"システムプロンプト","record.tools":"ツール","block.openSummary":"ブロック #{index} のツール呼び出しの要約を開く","block.openSummaryTitle":"ツール呼び出しの要約を開く","block.label":"ブロック #{index} {type}","history.loadingTrajectory":"実行の記録を読み込み中…","history.loadingEarlier":"以前の履歴を読み込み中…","history.loadingEarlierAria":"以前の履歴を読み込み中…","history.loadEarlier":"以前の履歴を読み込む","history.clickToLoadEarlier":"クリックして以前の履歴を読み込む","request.label":"リクエスト #{request}","request.labelCompaction":"リクエスト #{request} · 圧縮","request.compaction":"圧縮 · {section}","request.compactionPurpose":"圧縮","request.retryProgress":"{retry} / {maximum}","request.collapsedSummary":"折りたたまれた {kind} の要約、{summary}","request.collapsedTurn":"ターン","request.collapsedAssistant":"アシスタント","request.rowAria":"{request}{kind}、{content}","request.rowPrefix":"リクエスト {request}、","request.rowAriaCompaction":"リクエスト {request}、圧縮","request.noContent":"内容なし","summary.toolCalls.one":"{count} 件のツール呼び出し","summary.toolCalls.other":"{count} 件のツール呼び出し","summary.steps.one":"{count} ステップ","summary.steps.other":"{count} ステップ","details.event":"イベントの詳細","details.resize":"サイズ変更イベントの詳細","details.resizeTitle":"ドラッグしてサイズを変更。ダブルクリックでリセットします。","details.close":"詳細を閉じる","details.status":"ステータス","details.purpose":"目的","details.provider":"プロバイダー","details.model":"モデル","details.toolCalls":"ツール呼び出し","details.subtoolCalls":"サブツール呼び出し","details.error":"エラー","details.lastAttemptError":"最後の試行のエラー","details.failure.auth":"API キーが無効です","details.retry":"再試行","details.retryDelay":"再試行までの待機時間","details.result":"結果","details.compacted":"圧縮済み","details.assistantMessage":"アシスタントのメッセージ","details.source":"ソース","details.hierarchy":"階層","details.toolCall":"ツール呼び出し","timeline.aria":"実行の記録のタイムライン","timeline.overviewAria":"タイムラインの概要。ドラッグして横に動かすと、イベントに焦点を当てられます","timeline.noTimingData":"タイミングのデータがありません","timeline.total":"合計 {duration}","timeline.started":"開始 {time}","timeline.ttftDecoding":"TTFT {ttft} · デコード {decoding}","layout.compacting":"コンテキストを圧縮しています…","layout.compactionFailed":"圧縮に失敗しました","layout.compacted":"コンテキストを圧縮しました","layout.toolCallOnly":"ツール呼び出しのみ","attachment.list":"添付ファイル","attachment.imageName":"画像 {index}","layout.imageCount":"画像 ×{count}","layout.fileAttachments":"ファイル ×{count}","layout.initialSystemPrompt":"初期のシステムプロンプト","layout.systemPromptUpdated":"システムプロンプトを更新しました","layout.toolsUpdated":"ツールを更新しました","layout.toolAdded":"ツールを追加: {name}","layout.toolRemoved":"ツールを削除: {name}","layout.toolUpdateNotice":"ツールが更新されました","layout.toolsAdded":"追加: {names}","layout.toolsAddedCount":"{count} 件追加","layout.toolsChanged":"{added} 件追加、{removed} 件削除","layout.toolsRemoved":"削除: {names}","layout.toolsRemovedCount":"{count} 件削除","layout.systemPromptAndToolsUpdated":"システムプロンプトとツールを更新しました","layout.compactionInterrupted":"圧縮が完了する前に中断されました。"},"voice-input":{"dictate":"音声入力","setupPrompt.title":"録音の前に音声入力を設定してください","setupPrompt.body":"音声入力は有効です。初回は、ローカル認識モデルのダウンロードと準備が必要です。セットアップを始める前に、プラグインの詳細を開いてディスク容量、メモリ、所要時間の目安を確認してください。","setupPrompt.later":"後で","setupPrompt.open":"セットアップへ","setupPrompt.trigger":"音声入力のセットアップを開く","setupPrompt.details":"音声プラグインの設定を開く","setupPrompt.unavailableTitle":"音声認識の準備ができていません","setupPrompt.unavailableBody":"音声プラグインの詳細を開いて、認識の状態、準備の進捗、エラーを確認してください。","setup.local":"ローカルモデルは DSH を実行しているマシンにダウンロードされます。Python やコンパイラーは必要ありません。","setup.disk":"ディスク容量","setup.diskValue":"モデル、ランタイム、ダウンロードのキャッシュとして約 {gb} GB を確保してください","setup.memory":"メモリ","setup.memoryValue":"モデルを読み込んだ状態で約 {gb} GB。認識処理ではこれより多く使うことがあります","setup.time":"初回セットアップ","setup.timeValue":"ネットワークとマシンによりますが、約 {min}〜{max} 分を見込んでください","setup.estimateNote":"これらは目安です。ネットワークが遅い場合はさらに時間がかかることがあります。ダウンロードは再利用されます。未使用のモデルは、既定でメモリを解放します。","step.check":"ローカルリソースを確認","step.model":"認識モデルを準備","step.vad":"音声検出モデルを準備","step.verify":"モデルファイルを検証","step.load":"{name} を読み込み","stepStatus.pending":"未開始","stepStatus.running":"進行中","stepStatus.complete":"完了","stepStatus.failed":"失敗","stepStatus.cancelled":"キャンセル済み","short.downloading":"ダウンロード中","short.failed":"セットアップに失敗しました","retryRecording":"もう一度録音","preparationSteps":"準備の手順","prepare":"ダウンロードして準備","retryPrepare":"準備を再試行","cancelPrepare":"準備をキャンセル","downloadProgress":"ダウンロードの進捗","downloadBytes":"ダウンロード: {completed} / {total} MB、{percent}%","downloadUnknown":"{completed} MB ダウンロード済み","elapsed":"{seconds} 秒待機中","preparationFailed":"準備に失敗しました: {message}","download.network":"{resource} をダウンロードできません: ダウンロードサービスへの接続に失敗しました。","download.dns":"{resource} をダウンロードできません: ダウンロード先のアドレスを解決できませんでした。","download.timeout":"{resource} のダウンロードがタイムアウトしました。","download.certificate":"{resource} をダウンロードできません: 証明書の検証に失敗しました。","download.http":"{resource} をダウンロードできません: ダウンロードサービスが HTTP {status} を返しました。","download.integrity":"{resource} のダウンロードが不完全か、検証に失敗しました。","download.storage":"{resource} を保存できません: ディスク容量が不足しているか、書き込み権限がありません。","download.unknown":"{resource} を準備できませんでした。","downloadAdvice.network":"DSH を実行しているマシンが、ダウンロード元とモデルのダウンロードサービスに接続できるか確認してください。必要ならそのマシンでプロキシを設定してから、再試行してください。","downloadAdvice.dns":"DSH を実行しているマシンで DNS とプロキシの設定を確認してください。ダウンロード元のドメインを名前解決できるか確かめてから、再試行してください。","downloadAdvice.timeout":"DSH を実行しているマシンのネットワークまたはプロキシの接続を確認してから、後で再試行してください。検証済みのダウンロード済みファイルは保持されます。","downloadAdvice.certificate":"DSH を実行しているマシンのシステム時刻、信頼された証明書、プロキシの設定を確認してから、再試行してください。","downloadAdvice.http":"ダウンロード先のアドレスが利用可能か、プロキシがダウンロードサービスに到達できるかを確認するか、後で再試行してください。","downloadAdvice.integrity":"ダウンロードを再試行してください。他の完了済みで検証済みのファイルは保持されます。","downloadAdvice.storage":"DSH を実行しているマシンで、モデルの保存先のディスク空き容量と書き込み権限を確認してから、再試行してください。","downloadAdvice.unknown":"DSH を実行しているマシンで、ネットワーク、ディスク容量、モデルの保存先の権限を確認してから、再試行してください。","downloadSource":"ダウンロード元: {source}","sourceChoice":"モデルのダウンロード元","sourceAuto":"自動（推奨）","sourceHuggingFace":"Hugging Face","sourceMirror":"HF-Mirror（中国向けミラー）","sourceAutoHelp":"最初に応答したダウンロード元を優先し、失敗した場合は別のダウンロード元を試します。","sourceManualHelp":"選択したダウンロード元からのみダウンロードします。検証済みのダウンロード済みファイルは再利用されます。","downloadCode":"エラーコード: {code}","reconnecting":"音声認識に接続しています…","preparation.unprepared":"初回は、ローカル認識モデルをダウンロードします。","preparation.checking":"ローカルリソースを確認しています…","preparation.loading":"{name} を読み込んでいます…","preparation.waking":"ローカル音声認識を起動しています…","preparation.ready":"ローカル音声認識の準備ができました。","preparation.standby":"ローカルリソースの準備ができています。録音を開始すると、認識エンジンが起動します。","preparation.cancelled":"準備をキャンセルしました。完了したダウンロードは保持されます。","preparation.cancelling":"準備をキャンセルしています…","cloudReady":"クラウド音声認識の準備ができました。","discard":"文字起こしを破棄","transcribingShort":"文字起こし中…","wakingShort":"起動中…","provider":"認識サービス","language":"認識言語","inputDevice":"入力デバイス","systemMicrophone":"システムの既定","systemMicrophoneNamed":"システムの既定（{name}）","unnamedSelectedMicrophone":"マイク","unnamedMicrophone":"マイク {number}","inputLevel":"マイクの入力レベル","deviceUnavailable":"利用できません","deviceMissing":"マイクを利用できません。別の入力デバイスを選択してください。","auto":"自動検出","zh":"中国語","en":"英語","yue":"広東語","ja":"日本語","ko":"韓国語","start":"録音を開始","stop":"停止して文字起こし","cancel":"キャンセル","insert":"テキストを挿入","loading":"音声認識サービスを読み込んでいます…","requesting":"続行するには、マイクへのアクセスを許可してください…","recording":"録音中…","interrupted":"録音が中断されました。もう一度お試しください。","local":"音声は DSH を実行しているマシンで認識されます。モデルのダウンロードが必要な場合は、そのマシンが選択したダウンロード元とそのファイルサービスに接続できる必要があります。必要ならそのマシンでプロキシを設定してください。","cloud":"音声は選択したクラウドサービスに送信されます。","empty":"音声が認識されませんでした","cancelled":"音声入力をキャンセルしました。","conflict":"下書きが変更されました。文字起こしは保持されており、現在のカーソル位置に挿入できます。","failed":"音声認識に失敗しました: {message}","unavailable":"このブラウザでは音声を録音できません。マイクに対応したブラウザを使用してください。","permission":"マイクへのアクセスが無効になっています。ブラウザとシステムの設定で許可してください。","tooLarge":"録音がサービスの上限を超えています。もっと短い録音をお試しください。"},"workflowRun":{"run.title":"{name}","run.members.one":"{count} 件のメンバー","run.members.other":"{count} 件のメンバー","run.empty":"開始されたメンバーはいません","phase.unassigned":"フェーズなし","phase.empty":"フェーズ名が空です","statusCount.running":"実行中 {count}","statusCount.completed":"完了 {count}","statusCount.failed":"失敗 {count}","statusCount.cancelled":"キャンセル {count}","statusCount.interrupted":"中断 {count}","member.empty":"メンバー名が空です","member.open":"{name} を開く","status.running":"実行中","status.completed":"完了","status.failed":"失敗","status.cancelled":"キャンセル","status.interrupted":"中断"},"workspace":{"defaultWorkspace.failed":"既定のワークスペースを作成できません。「ワークスペースを選択」でフォルダーを選んでください。","draft.workspaceRequired":"先にワークスペースを選択してください。","draft.initializationFailed":"下書きを入力できませんでした。しばらくしてからもう一度お試しください。","group.ungrouped":"未分類","session.new":"新しいチャット","session.untitled":"無題","shortcut.noSession":"先にセッションを選択してください","shortcut.noPicker":"ディレクトリ選択は利用できません","shortcut.directoryBusy":"ワークスペースを選択または追加しています","shortcut.noCompletedTurn":"このセッションには完了したターンがありません","shortcut.forkFailed":"セッションをフォークできませんでした。もう一度お試しください。","section.workspaces":"ワークスペース","section.sessions":"チャット","viewOptions.label":"表示オプション","groupBy.label":"グループ化","groupBy.workspace":"ワークスペース","groupBy.workspaceTree":"ワークスペースのツリー","groupBy.flat":"1つのリスト","orderBy.label":"並べ替え","orderBy.manual":"手動","orderBy.updated":"最終更新日時","filterBy.label":"セッションを絞り込む","viewOptions.hideArchived":"アーカイブを非表示","viewOptions.showArchived":"すべての会話（アーカイブを表示）","viewOptions.onlyArchived":"アーカイブのみ","sessions.expand":"さらに {n} 件のセッションを表示","sessions.collapse":"表示を減らす","empty.none":"まだセッションはありません","empty.noneArchived":"まだアーカイブされたセッションはありません","empty.viewOthers":"他のセッションを表示","empty.noMatches":"一致する項目はありません","workspace.add":"ワークスペースを追加","search.sessions.aria":"チャットを検索","search.placeholder":"セッション名を検索","search.clear":"検索をクリア","search.results.aria":"検索結果","search.pending":"セッションの履歴を検索しています…","search.noMatches":"一致するセッションはありません","search.hasMore":"最初の {n} 件の結果を表示しています。検索条件を絞り込んでください。","menu.addWorkspace":"ワークスペースを追加…","picker.loading":"ワークスペースを読み込んでいます…","conflict.named":"「{name}」という名前のワークスペースは既に存在します。","folderError.title":"フォルダーを開けませんでした","folderError.retry":"選び直す","rename":"名前を変更","rename.workspace.title":"ワークスペース名を変更","rename.session.title":"セッション名を変更","field.workspaceName":"ワークスペース名","field.sessionName":"セッション名","delete.workspace":"ワークスペースを削除","delete.desc":"「{name}」をワークスペースの一覧から削除します。フォルダーとセッションのログは残ります。このワークスペースのセッションは「未分類」に表示されます。","delete.pending":"ワークスペースを削除しています…","menu.fork":"セッションをフォーク","menu.archiveSession":"セッションをアーカイブ","menu.unarchiveSession":"アーカイブを解除","menu.pinSession":"セッションをピン留め","menu.unpinSession":"ピン留めを解除","menu.sessionId":"セッション ID をコピー","toast.sessionIdCopied":"セッション ID をコピーしました","toast.sessionIdCopyFailed":"コピーできませんでした。もう一度お試しください。","row.archived":"アーカイブ済み","row.pinned":"ピン留め","toast.archivedNotOpenable":"アーカイブされたセッションは開けません。表示するにはアーカイブを解除してください。","toast.archived":"セッションをアーカイブしました。","toast.stoppedAndArchived":"セッションを停止してアーカイブしました。","archive.confirm.title":"このセッションを停止してアーカイブしますか？","archive.confirm.desc":"「{title}」にはまだ進行中の作業があります。アーカイブすると、まず作業が停止されます。セッションは後で、サイドバーの「すべての会話（アーカイブを表示）」フィルターから復元できます。停止した作業は自動では再開しません。","archive.confirm.activity":"停止される作業","archive.confirm.turn":"進行中のターン","archive.confirm.subagents.one":"実行中のサブエージェント {n} 件: {names}","archive.confirm.subagents.other":"実行中のサブエージェント {n} 件: {names}","archive.confirm.jobs.one":"バックグラウンドジョブ {n} 件: {names}","archive.confirm.jobs.other":"バックグラウンドジョブ {n} 件: {names}","archive.confirm.schedules.one":"スケジュールされたリマインダー {n} 件: {names}","archive.confirm.schedules.other":"スケジュールされたリマインダー {n} 件: {names}","archive.confirm.other.one":"その他の作業 {n} 件（{kind}）","archive.confirm.other.other":"その他の作業 {n} 件（{kind}）","archive.confirm.listSeparator":"、","archive.confirm.action":"停止してアーカイブ","archive.confirm.pending":"停止してアーカイブしています…","toast.archivedUndo":"元に戻す","toast.archivedOr":"、または","toast.archivedFilter":"アーカイブ済みのセッションを絞り込む","toast.pinFailed":"ピン留めできませんでした。しばらくしてからもう一度お試しください。","toast.unpinFailed":"ピン留めを解除できませんでした。しばらくしてからもう一度お試しください。","toast.createFailed":"新しいセッションを作成できませんでした: {message}","toast.forkRequiresOpen":"移行を完了するため、ブランチを作成する前に元のセッションを開いてください。","toast.openForkSource":"元のセッションを開く","sessions.count.one":"{n} 件のセッション","sessions.count.other":"{n} 件のセッション","actions.workspace.aria":"{name} のワークスペース操作","actions.session.aria":"{name} のセッション操作","actions.archive":"アーカイブ","actions.unarchive":"アーカイブを解除","actions.pin":"ピン留め","actions.unpin":"ピン留めを解除","actions.newSession":"新しいチャット","actions.newSession.aria":"{name} で新しいチャット","status.running":"実行中","status.subagentsRunning.one":"サブエージェント {n} 件が実行中","status.subagentsRunning.other":"サブエージェント {n} 件が実行中","status.idle":"待機中","status.waitingApproval":"承認待ち","status.planReview":"プランの確認待ち","status.waitingAnswer":"回答待ち","status.compact.approval":"承認","status.compact.planReview":"プラン確認","status.compact.answer":"回答","status.completed":"完了","hover.created":"{time} に作成","hover.copied":"コピーしました","date.ymd":"{y}-{m}-{d}","time.now":"たった今","time.minutes":"{n}分","time.hours":"{n}時間","time.days":"{n}日","time.months":"{n}か月","time.years":"{n}年","time.ago":"{t}前"}}
+    // </ja-dictionaries>
+
+    // 履歴は ChatGPT と同じ「1 つのリスト」を既定にする。
+    // ワークスペース別の箱ではなく、更新順のフラットなチャット一覧。
+    // - 保存が無い端末: フラットで初期化する
+    // - 保存が「ワークスペース表示」の端末: 一度だけフラットへ移行する
+    //   （このプラグインを入れる前から使っていたブラウザを拾うため）
+    // 移行済みの印を残すので、ユーザーが表示オプションで戻した選択は以後尊重する。
+    // 印は版付き。挙動を変えたら版を上げて、既存ブラウザにも一度だけ適用し直す。
+    try {
+      const KEY = 'dsh.workspace.view.v5'
+      const MIGRATED = 'dsh.chatgpt-theme.flat-default.v2'
+      const raw = localStorage.getItem(KEY)
+      let stored = null
+      if (raw) {
+        try {
+          stored = JSON.parse(raw)
+        } catch {
+          stored = null
+        }
+      }
+      const alreadyFlat = stored && stored.groupBy === 'flat'
+      if (!localStorage.getItem(MIGRATED) && !alreadyFlat) {
+        const base = {
+          groupBy: 'flat',
+          orderBy: 'updated',
+          groupExpansion: {},
+          sessionOrderByAccount: {},
+          archivedFilter: 'default',
+        }
+        // 並び順やアーカイブの絞り込みは利用者の設定を残し、グループ化だけ変える
+        const next = stored ? { ...base, ...stored, groupBy: 'flat' } : base
+        localStorage.setItem(KEY, JSON.stringify(next))
+      }
+      localStorage.setItem(MIGRATED, '1')
+    } catch {
+      // ストレージが使えない環境では既定表示のまま
+    }
+
+    const CSS = `
+/* ============================================================
+   1. パレット（ChatGPT 風）
+   本体より後から読まれても勝つように :root を前置して詳細度を上げる
+   ============================================================ */
+/* 日本語の字形で表示する。既定のスタックは中国語フォントが先に来ていて、
+   Windows では漢字が中国語の字形になる。設定でフォントを指定した場合はそちらが優先。 */
+html:root,
+html:root[lang] {
+  --dsh-font-family-text-default: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo UI", Meiryo, "Noto Sans JP", "Noto Sans CJK JP",
+    "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --dsh-font-family-code-default: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", Menlo,
+    Courier, "BIZ UDGothic", "Yu Gothic UI", "MS Gothic", "Osaka-Mono", "Noto Sans Mono CJK JP", monospace;
+}
+
+:root body[data-ds-dark-theme] {
+  --dsw-alias-bg-base: #212121;
+  --dsw-alias-bg-document-preview: #212121;
+  --dsw-alias-bg-layer-1: #2f2f2f;
+  --dsw-alias-bg-layer-2: #333333;
+  --dsw-alias-bg-layer-3: #3a3a3a;
+  --dsw-alias-bg-module-platform: #303030;
+  --dsw-alias-bg-multi-select: #2f2f2f;
+  --dsw-specific-sidebar-fill: #171717;
+  --dsw-specific-input-major: #303030;
+  --dsw-specific-bubble: #303030;
+  --dsw-specific-bubble-highlight: #3a3a3a;
+  --dsw-specific-menu: #2f2f2ff2;
+  --dsw-specific-selector: #3a3a3a;
+  --dsw-specific-sidebar-nav-item-hover: #ffffff14;
+  --dsw-specific-sidebar-nav-item-active: #ffffff1f;
+  --dsw-specific-sidebar-nav-item-active-accent: #ffffff29;
+  --dsw-alias-label-primary: #ececec;
+  --dsw-alias-label-primary-dimmed: #e6e6e6;
+  --dsw-alias-label-secondary: #cdcdcd;
+  --dsw-alias-label-tertiary: #9b9b9b;
+  /* 補足の文字。#8e8e8e だとメニューや入力欄の地（#2f2f2f）で 4.1:1 しかないので上げる */
+  --dsw-alias-label-caption: #9b9b9b;
+  --dsw-alias-border-l1: #ffffff1a;
+  --dsw-alias-border-l2: #ffffff26;
+  --dsw-alias-border-l3: #ffffff33;
+  --dsw-alias-interactive-bg-hover: #ffffff14;
+  --dsw-alias-interactive-bg-hover-solid: #3a3a3a;
+  --dsw-alias-settings-card-fill: #2f2f2f;
+  --dsw-alias-settings-card-stroke: #ffffff26;
+  --dsw-alias-toast-bg: #3a3a3a;
+  --dsw-alias-markdown-code-block: #171717;
+  --dsw-alias-markdown-code-block-banner: #2f2f2f;
+  --dsw-alias-markdown-inline-code: #ffffff1a;
+  --dsw-alias-scrollbar-bg-l1: #3a3a3a;
+  --dsw-alias-scrollbar-bg-l2: #4a4a4a;
+  --dsh-scrollbar-thumb: #3f3f3f;
+  --dsh-scrollbar-thumb-hover: #565656;
+}
+
+:root body:not([data-ds-dark-theme]) {
+  --dsw-alias-bg-base: #ffffff;
+  --dsw-alias-bg-document-preview: #ffffff;
+  --dsw-alias-bg-layer-1: #f4f4f4;
+  --dsw-alias-bg-layer-2: #ececec;
+  --dsw-alias-bg-layer-3: #e3e3e3;
+  --dsw-alias-bg-module-platform: #f4f4f4;
+  --dsw-specific-sidebar-fill: #f9f9f9;
+  --dsw-specific-input-major: #ffffff;
+  --dsw-specific-bubble: #f4f4f4;
+  --dsw-specific-bubble-highlight: #ececec;
+  --dsw-specific-menu: #fffffff2;
+  --dsw-specific-selector: #ececec;
+  --dsw-specific-sidebar-nav-item-hover: #0000000a;
+  --dsw-specific-sidebar-nav-item-active: #0000000f;
+  --dsw-specific-sidebar-nav-item-active-accent: #00000014;
+  --dsw-alias-label-primary: #0d0d0d;
+  --dsw-alias-label-primary-dimmed: #1a1a1a;
+  --dsw-alias-label-secondary: #3c3c3c;
+  /* 補足の文字。#767676 は白地では 4.5:1 だが、サイドバー（#f9f9f9）や選択行（#ececec）で
+     足りなかったので、選択行でも 4.5:1 になる #6b6b6b にする */
+  --dsw-alias-label-tertiary: #6b6b6b;
+  --dsw-alias-label-caption: #6b6b6b;
+  --dsw-alias-border-l1: #0000000f;
+  --dsw-alias-border-l2: #0000001a;
+  --dsw-alias-border-l3: #00000026;
+  --dsw-alias-interactive-bg-hover: #0000000a;
+  --dsw-alias-interactive-bg-hover-solid: #ececec;
+  --dsw-alias-settings-card-fill: #ffffff;
+  --dsw-alias-settings-card-stroke: #0000001a;
+  --dsw-alias-toast-bg: #1a1a1a;
+  --dsw-alias-markdown-code-block: #f4f4f4;
+  --dsw-alias-markdown-code-block-banner: #ececec;
+  --dsw-alias-markdown-inline-code: #0000000a;
+  --dsw-alias-scrollbar-bg-l1: #cfcfcf;
+  --dsw-alias-scrollbar-bg-l2: #b4b4b4;
+  --dsh-scrollbar-thumb: #cfcfcf;
+  --dsh-scrollbar-thumb-hover: #b4b4b4;
+}
+
+/* ============================================================
+   2. ホーム（新規チャット）: ChatGPT の入口に寄せる
+   ============================================================ */
+/* 開発者向けの「プレビュー」バッジは出さない */
+[class*="previewBadge"] {
+  display: none !important;
+}
+
+/* 見出しを ChatGPT と同じ大きさ・字面に */
+[class*="headline"] [class*="titleGroup"] {
+  font-size: clamp(22px, 2.2vw, 30px) !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em;
+}
+
+/* エージェントプリセット（Standard モード）のチップは既定で出さない。
+   必要になったらこの 1 ブロックを消せば戻る。 */
+[class*="heroWorkspaceRow"] [class*="menuAnchor"] {
+  display: none !important;
+}
+
+/* ワークスペースのチップは控えめに */
+[class*="heroWorkspaceRow"] {
+  gap: 8px;
+}
+[class*="heroWorkspaceRow"] [class*="workspace"] {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ============================================================
+   3. コンポーザ: ChatGPT の入力欄に寄せる
+   ============================================================ */
+[class*="composerStack"] [class*="card"] {
+  border: 1px solid var(--dsw-alias-border-l1);
+  box-shadow: 0 2px 12px #0000001f;
+}
+
+/* ============================================================
+   4. サイドバー: 情報の優先順位を ChatGPT に寄せる
+   ============================================================ */
+/* 主導線（新しいチャット）は ChatGPT と同じ「枠なしの行」にする。
+   注意: [class*="newSession"] は子要素（newSessionLabelMask / newSessionContent）にも
+   当たるので、必ず button に限定する（でないと枠が二重・三重になる）。 */
+button[class*="newSession"] {
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+}
+button[class*="newSession"]:hover {
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+}
+/* マウスで押した後に残るフォーカスリングは出さない（押した直後に blur もしている）。
+   キーボード（Tab）で来た時だけ、ChatGPT と同じ控えめな枠を出す。 */
+button[class*="newSession"]:focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+button[class*="newSession"]:focus-visible {
+  outline: 2px solid var(--dsw-alias-label-secondary) !important;
+  outline-offset: -2px;
+  box-shadow: none !important;
+}
+
+/* 履歴の行は詰めて、行間で読ませる */
+[class*="sessionRow"] {
+  min-height: 32px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+[class*="projectRow"] {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12.5px;
+}
+
+/* 上部のパネル行（プラグイン / 自動化タスク / その他）は脇役に */
+[class*="panelRow"] {
+  min-height: 32px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ============================================================
+   6. 「チャットだけ」にする
+   - 右サイドバー（実行の記録・ブラウザ・ファイル・ターミナル）の入口を出さない
+   - ワークスペースという概念をコンポーザや見出しに出さない
+   ※ 戻したい時はこのブロックを消す（JS 側の data-dshgpt-* は無害）
+   ============================================================ */
+/* 右サイドバーを開くボタン */
+[data-dshgpt-rightbar-toggle] {
+  display: none !important;
+}
+
+/* ホームのワークスペース選択（フォルダ名 + チップ） */
+[class*="heroWorkspaceRow"] {
+  display: none !important;
+}
+
+/* ワークスペースの追加ボタン（サイドバーの見出し右） */
+[data-dshgpt-add-workspace] {
+  display: none !important;
+}
+
+/* サイドバー上部の開発者向けナビ（プラグイン / 自動化タスク / その他）。
+   設定は左下の「その他」から開けるので、そちらは残す。 */
+[class*="sidebarCol"] [class*="panelList"] {
+  display: none !important;
+}
+
+/* 会話ヘッダーのチップ（エージェントチーム / Standard モード / サブエージェント件数） */
+header [class*="headerActions"] {
+  display: none !important;
+}
+
+/* 会話ヘッダーを ChatGPT と同じ 1 行（タイトル + ⋯）にする。
+   - 表示の切り替えタブ（チャット / 実行の記録 / その他の会話の表示）は出さない。
+     途中の手順は会話の中（「リクエストを分析中」やツールの行）に出るので、チャットのタブだけで足りる。
+     別のタブが開いたままだと戻れないので、JS 側でチャットのタブへ戻す（showChatTab）。
+   - 「エクスプローラーで開く」（作業フォルダを開く）も出さない。⋯ の「その他の操作」は残す。 */
+header:has([data-slot="conversation.session.header"]):not([class*="headerBlank"]) [class*="_tabs"] {
+  display: none !important;
+}
+header:has([data-slot="conversation.session.header"]):not([class*="headerBlank"]) [class*="menuAnchor"]:has([data-open-target]) {
+  display: none !important;
+}
+header:has([data-slot="conversation.session.header"]):not([class*="headerBlank"]) {
+  min-height: 52px;
+  align-content: center;
+  border-bottom-color: transparent !important;
+}
+header:has([data-slot="conversation.session.header"]):not([class*="headerBlank"]) [class*="crumbCurrent"] {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* 入力欄の下の数字（ターン・ステップ・トークン/秒、使用トークン・キャッシュヒット、文脈の使用率）。
+   ChatGPT には無い開発者向けの情報なので出さない。途中経過は会話の中に出る。戻したい時はこのブロックを消す。 */
+[data-composer-dock] {
+  display: none !important;
+}
+/* 数字の行が無くなった分、入力欄が画面の下端に付かないよう少しあける */
+[class*="composerSeat"] {
+  padding-bottom: 14px;
+}
+
+/* 履歴の行にマウスを乗せた時に出るカード（タイトル・時刻・状態）。
+   ChatGPT の履歴リストには無く、狭い画面では残っているように見えるので出さない。
+   戻したい時はこのブロックを消す。 */
+body > div[role="button"]:has([class*="hoverContent"]) {
+  display: none !important;
+}
+
+/* アクセスモード（「ファイルへの書き込み」など）は ChatGPT に無いので、常時はアイコンだけ。
+   文字は消すが、モードごとにアイコンの図柄が違い、aria-label と title（JS で付与）で
+   モード名は分かる。 */
+[class*="modes"] [class*="triggerLabel"] {
+  display: none !important;
+}
+
+/* モデル選択も常時は「モデル」だけ。実名と思考の強度はホバー（title）と
+   aria-label で分かる（JS で title を付与）。 */
+[class*="standardControls"] [class*="triggerLabel"],
+[class*="standardControls"] [class*="triggerEffort"] {
+  display: none !important;
+}
+html[lang^="ja"] [class*="standardControls"] button::before {
+  content: "モデル";
+}
+html:not([lang^="ja"]) [class*="standardControls"] button::before {
+  content: "Model";
+}
+
+/* ============================================================
+   5. スマホ（狭い幅）: レールをやめてドロワーにする
+   ============================================================ */
+@media (max-width: ${BREAKPOINT}px) {
+  /* frame の grid は inline style なので !important で潰す。
+     サイドバーは position: fixed のオーバーレイとして重ねる。 */
+  [data-dshgpt-frame] {
+    grid-template-columns: 0 minmax(0, 1fr) 0 !important;
+  }
+  /* fixed にすると自動配置がずれるので、列を明示する */
+  [data-dshgpt-frame] > [data-dshgpt-sidebar] {
+    grid-column: 1;
+  }
+  [data-dshgpt-frame] > [data-dshgpt-center] {
+    grid-column: 2;
+    min-width: 0;
+  }
+  [data-dshgpt-frame] > [data-dshgpt-right] {
+    grid-column: 3;
+  }
+
+  [data-dshgpt-sidebar] {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(86vw, 320px) !important;
+    z-index: 60;
+    transform: translateX(-102%);
+    transition: transform 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+    box-shadow: none;
+  }
+  [data-dshgpt-open] [data-dshgpt-sidebar] {
+    transform: none;
+    box-shadow: 0 0 48px #00000099;
+  }
+
+  [data-dshgpt-backdrop] {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: #00000080;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+  [data-dshgpt-open] [data-dshgpt-backdrop] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* 開いている間はハンバーガーを隠す（閉じるボタンはサイドバー内にある）。
+     opacity だけだとキーボードのフォーカスが残るので visibility も落とす。 */
+  [data-dshgpt-open] [data-dshgpt-hamburger] {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* 中央の本文を全幅に。ヘッダーの左はハンバーガー分あける */
+  [data-dshgpt-frame] header {
+    padding-left: 46px;
+  }
+
+  /* iPhone のホームバーぶんの余白 */
+  [class*="composerSeat"] {
+    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  }
+
+  /* iOS で入力時に画面が拡大されないよう 16px にする */
+  [class*="composer"] textarea,
+  [class*="composer"] [contenteditable="true"] {
+    font-size: 16px !important;
+    line-height: 24px !important;
+  }
+}
+
+/* 動きを減らす設定のときはトランジションを切る */
+@media (prefers-reduced-motion: reduce) {
+  [data-dshgpt-sidebar],
+  [data-dshgpt-backdrop] {
+    transition: none !important;
+  }
+}
+
+/* ハンバーガー（狭い幅のときだけ表示） */
+[data-dshgpt-hamburger] {
+  display: none;
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 70;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+[data-dshgpt-hamburger]:active {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+[data-dshgpt-hamburger] svg {
+  width: 22px;
+  height: 22px;
+}
+@media (max-width: ${BREAKPOINT}px) {
+  [data-dshgpt-hamburger] {
+    display: flex;
+  }
+}
+`
+
+    const HAMBURGER_SVG =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">' +
+      '<path d="M4 7h16M4 12h16M4 17h16"/></svg>'
+
+    /**
+     * 狭い幅のドロワーとハンバーガー。
+     * DSH のサイドバー開閉ボタン（aria-label が「サイドバーを開く/閉じる」）を
+     * そのまま押すので、開閉状態はアプリ側が持ったまま二重管理しない。
+     * @returns 後片付けの関数
+     */
+    function installMobileDrawer() {
+      const state = { button: null, root: null, frame: null, sidebar: null, observer: null, timers: [] }
+
+      const later = (fn, ms) => {
+        const id = setTimeout(fn, ms)
+        state.timers.push(id)
+        return id
+      }
+
+      const findButton = () => {
+        // 1) クラス名から（言語に依存しない）。ロゴ行の「開閉トグル」だけを選ぶ。
+        //    ロゴ行の先頭は「新しいチャット」ボタンのことがあるので、必ず toggle を探す。
+        const byStructure =
+          document.querySelector('[class*="logoRow"] button[class*="toggle"]') ||
+          document.querySelector('button[class*="toggle"][aria-label]')
+        if (byStructure) return byStructure
+        // 2) だめなら aria-label（日本語・英語）
+        for (const b of document.querySelectorAll('button[aria-label]')) {
+          const label = b.getAttribute('aria-label') || ''
+          if (!/sidebar|サイドバー/i.test(label)) continue
+          if (/右サイドバー|right sidebar/i.test(label)) continue
+          return b
+        }
+        return null
+      }
+
+      const isOpen = () => {
+        if (!state.root) return false
+        const cls = typeof state.root.className === 'string' ? state.root.className : ''
+        // 折りたたみ中は root に collapsed が付く（幅の inline style は開いている時だけ）
+        // クラス名は "hHd-Xa_collapsed" のように "_" を含むので [\w-] で見る
+        return !/(^|\s)[\w-]*collapsed(\s|$)/.test(cls)
+      }
+
+      const syncOpen = () => {
+        // 印は body に付ける。暗幕とハンバーガーは body 直下に足すので、
+        // frame に付けると子孫セレクタが当たらない（レビューで発見）。
+        const open = isPhone() && isOpen()
+        document.body.toggleAttribute('data-dshgpt-open', open)
+        applyInert()
+        if (state.open !== open) {
+          const first = state.open === undefined
+          state.open = open
+          onDrawerChange(open, first)
+        }
+      }
+
+      // ドロワーの開閉に合わせて、キーボードと読み上げの行き先を揃える。
+      // - 開いている間は、裏の会話（中央・右）を inert にして Tab がドロワーの外へ出ないようにする
+      // - 開いたらドロワーの中（閉じるボタン）へ、閉じたらハンバーガーへフォーカスを戻す
+      //   （チャットを選んで閉じた時も同じ。起動直後の 1 回目は動かさない）
+      const onDrawerChange = (open, first) => {
+        const hamburger = document.querySelector('[data-dshgpt-hamburger]')
+        if (hamburger) hamburger.setAttribute('aria-expanded', String(open))
+        for (const el of document.querySelectorAll('[data-dshgpt-center], [data-dshgpt-right]')) {
+          if (open) el.setAttribute('inert', '')
+          else el.removeAttribute('inert')
+        }
+        if (first) return
+        const active = document.activeElement
+        if (open) {
+          // 開閉ボタンは開いた直後に描き直されることがあるので、少し待ってから探し直す
+          later(() => {
+            const button = findButton()
+            if (button && state.sidebar && !state.sidebar.contains(document.activeElement)) button.focus({ preventScroll: true })
+          }, 60)
+        } else if (hamburger && isPhone() && (!active || active === document.body || state.sidebar?.contains(active))) {
+          hamburger.focus({ preventScroll: true })
+        }
+      }
+
+      // 閉じているドロワーは画面外にあるが、そのままだとキーボードのフォーカスが
+      // 中に入ってしまう。狭い幅で閉じている間だけ inert にする（広い幅では解除）。
+      const applyInert = () => {
+        if (!state.sidebar) return
+        if (isPhone() && !isOpen()) state.sidebar.setAttribute('inert', '')
+        else state.sidebar.removeAttribute('inert')
+      }
+
+      // ドロワーとして動くのは狭い幅のときだけ。PC ではサイドバーの開閉に触らない。
+      const isPhone = () => window.matchMedia(`(max-width: ${BREAKPOINT}px)`).matches
+
+      // 閉じるボタンを押したら true。押した後にもう一度押すと開き直してしまうので、
+      // 呼ぶ側は true が返ったら再試行しない（DSH の描き直しで root が替わることがあるので探し直す）。
+      const close = () => {
+        if (!isPhone()) return false
+        resolve()
+        if (state.button && isOpen()) {
+          state.button.click()
+          return true
+        }
+        return false
+      }
+
+      // 遷移したらドロワーを閉じる（ChatGPT のモバイルと同じ挙動）。
+      // 画面遷移の処理と競合することがあるので、少し待ってから押す。押せなかった時だけもう 1 回試す。
+      const onSidebarClick = (event) => {
+        // マウスで押した後はフォーカスリングを残さない（キーボード操作なら残す）。
+        // これをしないと「新しいチャット」の周りに枠が残り続ける。
+        if (document.documentElement.getAttribute('data-input-modality') === 'pointer') {
+          const pressed = typeof event.target?.closest === 'function' ? event.target.closest('button') : null
+          if (pressed) setTimeout(() => pressed.blur(), 0)
+        }
+        if (!isPhone()) return
+        const t = event.target
+        if (!t || typeof t.closest !== 'function') return
+        const navigates =
+          t.closest('[class*="newSession"]') ||
+          t.closest('[class*="panelRow"]') ||
+          t.closest('[role="treeitem"]:not([aria-expanded])')
+        if (navigates) {
+          later(() => {
+            if (!close()) later(close, 400)
+          }, 80)
+        }
+      }
+
+      const onKeydown = (event) => {
+        if (event.key === 'Escape') close()
+      }
+
+      // 「チャットだけ」にするための印付け。
+      // 消すのは**開く側のボタンだけ**。閉じる側まで消すと、何かの拍子に
+      // 右パネルが開いた時に閉じられなくなる。
+      // 開くボタンは会話ヘッダーの角の席にあるので、クラス名で当てる（言語に依存しない）。
+      // ラベルでも拾うが、「開く」以外（Collapse / 閉じる）は対象外にする。
+      const isOpenLabel = (label) => /open|開く/i.test(label)
+      const isRightLabel = (label) => /right sidebar|右サイドバー/i.test(label)
+      const tagChrome = () => {
+        for (const b of document.querySelectorAll('[class*="headerCorner"] button')) {
+          b.setAttribute('data-dshgpt-rightbar-toggle', '')
+        }
+        for (const b of document.querySelectorAll('button[aria-label]')) {
+          const label = b.getAttribute('aria-label') || ''
+          if (isRightLabel(label)) {
+            if (isOpenLabel(label)) b.setAttribute('data-dshgpt-rightbar-toggle', '')
+            else b.removeAttribute('data-dshgpt-rightbar-toggle')
+          }
+          if (/ワークスペースを追加|add workspace/i.test(label)) b.setAttribute('data-dshgpt-add-workspace', '')
+        }
+        // アクセスモードのチップはアイコンだけにするので、ホバー用にモード名を title へ写す
+        for (const chip of document.querySelectorAll('[class*="modes"] button[class*="trigger"]')) {
+          const label = chip.querySelector('[class*="triggerLabel"]')?.textContent?.trim()
+          if (label && chip.title !== label) chip.title = label
+          chip.setAttribute('data-dshgpt-mode-chip', '')
+        }
+        // モデル選択は「モデル」表示にするので、実名を title へ写す
+        for (const chip of document.querySelectorAll('[class*="standardControls"] button')) {
+          const label = chip.querySelector('[class*="triggerLabel"]')?.textContent?.trim()
+          if (label && chip.title !== label) chip.title = label
+          chip.setAttribute('data-dshgpt-model-chip', '')
+        }
+        showChatTab()
+      }
+
+      // 会話の表示タブは CSS で隠している。「実行の記録」などが選ばれたまま開くと
+      // 戻る手段が無いので、先頭（チャット）のタブへ戻す。
+      const showChatTab = () => {
+        const tabs = document.querySelectorAll('[data-slot="conversation.session.header"] [role="tablist"] [role="tab"]')
+        if (tabs.length > 0 && tabs[0].getAttribute('aria-selected') !== 'true') tabs[0].click()
+      }
+
+      // 右パネルが開いた状態で始まった時だけ、一度だけ閉じる。
+      // 閉じるボタンは「右サイドバー」系のラベルで「開く」ではないもの、と見る（言語差を吸収）。
+      const closeRightPanel = () => {
+        const column = document.querySelector('[class*="rightbarCol"]')
+        if (!column || column.getBoundingClientRect().width === 0) return
+        for (const b of document.querySelectorAll('button[aria-label]')) {
+          const label = b.getAttribute('aria-label') || ''
+          if (!isRightLabel(label) || isOpenLabel(label)) continue
+          if (b.getBoundingClientRect().width > 0) {
+            b.click()
+            return
+          }
+        }
+      }
+
+      const resolve = () => {
+        const button = findButton()
+        if (!button) return false
+        let root = button.parentElement
+        while (root && root.id !== 'root') {
+          const cls = typeof root.className === 'string' ? root.className : ''
+          if (/(^|\s)[\w-]*_root(\s|$)/.test(cls)) break
+          root = root.parentElement
+        }
+        if (!root || root.id === 'root') return false
+        const sidebar = root.closest('[class*="sidebarCol"]')
+        const frame = sidebar && sidebar.parentElement
+        if (!sidebar || !frame) return false
+
+        if (state.button !== button) {
+          state.button = button
+          if (state.observer) state.observer.disconnect()
+          state.observer = new MutationObserver(syncOpen)
+          state.observer.observe(root, { attributes: true, attributeFilter: ['class', 'style'] })
+          state.observer.observe(button, { attributes: true, attributeFilter: ['aria-label'] })
+        }
+        state.root = root
+        state.sidebar = sidebar
+        state.frame = frame
+
+        sidebar.setAttribute('data-dshgpt-sidebar', '')
+        frame.setAttribute('data-dshgpt-frame', '')
+        const kids = [...frame.children]
+        const sideIndex = kids.indexOf(sidebar)
+        if (sideIndex >= 0 && kids[sideIndex + 1]) kids[sideIndex + 1].setAttribute('data-dshgpt-center', '')
+        if (sideIndex >= 0 && kids[sideIndex + 2]) kids[sideIndex + 2].setAttribute('data-dshgpt-right', '')
+
+        if (!sidebar.dataset.dshgptWired) {
+          sidebar.dataset.dshgptWired = '1'
+          sidebar.addEventListener('click', onSidebarClick)
+        }
+        syncOpen()
+        return true
+      }
+
+      const ensureUi = () => {
+        // 表示言語に合わせたラベル（読み上げ用）
+        const label = /^ja/i.test(document.documentElement.lang || '') ? 'メニュー' : 'Menu'
+        if (!document.querySelector('[data-dshgpt-hamburger]')) {
+          const button = document.createElement('button')
+          button.type = 'button'
+          button.setAttribute('data-dshgpt-hamburger', '')
+          button.setAttribute('aria-label', label)
+          button.setAttribute('aria-expanded', String(Boolean(state.open)))
+          button.innerHTML = HAMBURGER_SVG
+          button.addEventListener('click', () => state.button && state.button.click())
+          document.body.appendChild(button)
+        }
+        if (!document.querySelector('[data-dshgpt-backdrop]')) {
+          const backdrop = document.createElement('div')
+          backdrop.setAttribute('data-dshgpt-backdrop', '')
+          backdrop.setAttribute('aria-hidden', 'true')
+          backdrop.addEventListener('click', close)
+          document.body.appendChild(backdrop)
+        }
+      }
+
+      const boot = () => {
+        tagChrome()
+        if (resolve()) {
+          ensureUi()
+          closeRightPanel()
+          return
+        }
+        later(boot, 300)
+      }
+      boot()
+
+      // 画面遷移で DOM が作り直された時にも追従する。
+      // 本文のストリーミングでも mutation が飛ぶので、まとめて間引く（毎トークン走らせない）。
+      let scheduled = null
+      const onMutations = () => {
+        if (scheduled !== null) return
+        scheduled = setTimeout(() => {
+          scheduled = null
+          tagChrome()
+          if (!resolve()) later(resolve, 300)
+          else syncOpen()
+        }, 150)
+      }
+      const bodyObserver = new MutationObserver(onMutations)
+      bodyObserver.observe(document.body, { childList: true, subtree: true })
+      document.addEventListener('keydown', onKeydown)
+      window.addEventListener('resize', syncOpen)
+
+      return () => {
+        bodyObserver.disconnect()
+        if (scheduled !== null) clearTimeout(scheduled)
+        if (state.observer) state.observer.disconnect()
+        document.removeEventListener('keydown', onKeydown)
+        window.removeEventListener('resize', syncOpen)
+        for (const id of state.timers) clearTimeout(id)
+        if (state.sidebar) {
+          state.sidebar.removeEventListener('click', onSidebarClick)
+          delete state.sidebar.dataset.dshgptWired
+          state.sidebar.removeAttribute('data-dshgpt-sidebar')
+          state.sidebar.removeAttribute('inert')
+        }
+        if (state.frame) {
+          state.frame.removeAttribute('data-dshgpt-frame')
+        }
+        document.body.removeAttribute('data-dshgpt-open')
+        for (const el of document.querySelectorAll('[data-dshgpt-center], [data-dshgpt-right]')) {
+          el.removeAttribute('inert')
+          el.removeAttribute('data-dshgpt-center')
+          el.removeAttribute('data-dshgpt-right')
+        }
+        for (const sel of ['[data-dshgpt-hamburger]', '[data-dshgpt-backdrop]']) {
+          const el = document.querySelector(sel)
+          if (el) el.remove()
+        }
+      }
+    }
+
+    /**
+     * 新規チャットの作業フォルダを 1 か所に固定する（クライアント側）。
+     *
+     * フォルダの用意と DSH への登録はホスト側（index.js）がやる。ホスト側はその
+     * ワークスペースの名前を CHAT_TITLE にして印を付ける（名前は DSH 内で重複しない）。
+     * ここは印の付いたワークスペースを探して、新規チャットをそこへ寄せる。
+     * 印が無い時（ホスト側が古い版のまま動いている間）だけ、フォルダ名が chat のものを使う。
+     * 固定は `ctx.uiWorkspace.startSession` を包んで、ワークスペース未指定の時だけ
+     * 既定を差し込む（サイドバーの「新しいチャット」もショートカットも同じ経路）。
+     *
+     * @returns 後片付けの関数
+     */
+    // ホスト側（index.js）の CHAT_TITLE と同じ値にする
+    const CHAT_TITLE = 'chat (dsh-chat-ui)'
+
+    function installChatWorkspace(ctx) {
+      const service = ctx.uiWorkspace
+      if (!service || !ctx.workspaces) return () => {}
+      let targetId = null
+      let disposed = false
+
+      const findChatWorkspace = () => {
+        try {
+          const snapshot = ctx.workspaces.list.getSnapshot()
+          if (!snapshot || snapshot.phase !== 'ready') return null
+          const marked = snapshot.items.find((workspace) => workspace.title === CHAT_TITLE)
+          if (marked) return marked.workspaceId ?? null
+          // 印が無い時の代わり: フォルダ名が chat のもの。複数あれば最後に更新されたもの。
+          const matches = snapshot.items.filter((workspace) => /[\\/]chat$/i.test(workspace.path ?? ''))
+          if (matches.length === 0) return null
+          matches.sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
+          return matches[0].workspaceId ?? null
+        } catch {
+          return null
+        }
+      }
+
+      const refresh = () => {
+        if (disposed) return
+        targetId = findChatWorkspace()
+      }
+      const unsubscribe = ctx.workspaces.list.subscribe(refresh)
+      refresh()
+
+      const originalStart = service.startSession
+      const hadOwnStart = Object.prototype.hasOwnProperty.call(service, 'startSession')
+      if (typeof originalStart === 'function' && !service.__dshChatgptPatched) {
+        const bound = originalStart.bind(service)
+        service.startSession = function patchedStartSession(workspaceId, options) {
+          return bound(workspaceId ?? targetId ?? undefined, options)
+        }
+        service.__dshChatgptPatched = true
+      }
+
+      return () => {
+        disposed = true
+        unsubscribe?.()
+        if (service.__dshChatgptPatched) {
+          // 元がインスタンス自身のプロパティだったか、prototype のメソッドだったかで戻し方を変える
+          if (hadOwnStart) service.startSession = originalStart
+          else delete service.startSession
+          delete service.__dshChatgptPatched
+        }
+      }
+    }
+
+    return {
+      inject: ['uiWorkspace', 'workspaces', 'locale'],
+      apply(ctx) {
+        ctx.effect(() => {
+          const style = document.createElement('style')
+          style.dataset.dshChatgptTheme = 'palette'
+          style.textContent = CSS
+          document.head.appendChild(style)
+          return () => style.remove()
+        }, 'dsh-chatgpt-theme: palette and phone layout')
+
+        // 日本語 UI（ChatGPT 風の文言込み）。既に ja が登録されている環境では触らない。
+        ctx.effect(() => {
+          if (!ctx.locale) return
+          try {
+            ctx.locale.addLanguage({ id: 'ja', label: '日本語', fallback: 'en' })
+          } catch {
+            // 他の日本語パック（@local/dsh-ja など）が先に登録している
+            return
+          }
+          for (const [namespace, dictionary] of Object.entries(JA_DICTIONARIES)) {
+            try {
+              ctx.locale.register(namespace, 'ja', dictionary)
+            } catch {
+              // namespace 単位の衝突は無視する
+            }
+          }
+        }, 'dsh-chat-ui: Japanese')
+
+        ctx.effect(() => installMobileDrawer(), 'dsh-chatgpt-theme: phone drawer')
+        ctx.effect(() => installChatWorkspace(ctx), 'dsh-chatgpt-theme: chat workspace')
+      },
+    }
+  },
+})

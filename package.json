@@ -1,0 +1,52 @@
+{
+  "name": "dsh-chat-ui",
+  "version": "0.1.0",
+  "description": "ChatGPT-style chat UI for the DeepSeek Harness (DSH) web client: palette, chat-only layout, phone drawer, and a fixed chat workspace",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oda-blue/dsh-chat-ui.git"
+  },
+  "homepage": "https://github.com/oda-blue/dsh-chat-ui#readme",
+  "bugs": "https://github.com/oda-blue/dsh-chat-ui/issues",
+  "type": "module",
+  "keywords": ["dsh", "deepseek-harness", "chatgpt", "theme", "client-plugin"],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./icon": "./icon.svg"
+  },
+  "bin": {
+    "dsh-chat-ui": "./bin/web-entry.mjs"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "bin/web-entry.mjs",
+    "assets/apple-touch-icon.png",
+    "assets/icon-192.png",
+    "assets/icon-512.png",
+    "assets/icon-maskable-512.png",
+    "locale/ja.json",
+    "tools/embed-ja.mjs",
+    "docs/preview-desktop.png",
+    "docs/preview-mobile.png",
+    "docs/quickstart.md",
+    "docs/quickstart.ja.md",
+    "docs/requirements.ja.md",
+    "README.md",
+    "README.ja.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  }
+}
